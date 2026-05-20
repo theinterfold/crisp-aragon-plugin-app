@@ -107,11 +107,18 @@ export default function Create() {
   return (
     <MainSection narrow={true}>
       <div className="w-full justify-between">
-        <h1 className="mb-8 line-clamp-1 flex flex-1 shrink-0 text-2xl font-normal leading-tight text-neutral-800 md:text-3xl">
-          Create Proposal
-        </h1>
+        <div className="page-head mb-8">
+          <div>
+            <div className="kicker mb-3">02 · Governance / Submit</div>
+            <h1 className="display-title">New proposal</h1>
+          </div>
+        </div>
 
         <PlaceHolderOr selfAddress={selfAddress} canCreate={canCreate} isConnected={isConnected}>
+          <p className="form-intro">
+            A proposal becomes <em>active</em> the moment it is mined. Voters then have the window you set to cast
+            encrypted ballots — tallies decrypt only once that window closes.
+          </p>
           <div className="mb-6">
             <InputText
               className=""
@@ -148,8 +155,8 @@ export default function Create() {
 
           <div className="mb-6 flex flex-col gap-y-2 md:gap-y-3">
             <div className="flex flex-col gap-0.5 md:gap-1">
-              <div className="flex gap-x-3">
-                <p className="text-base font-normal leading-tight text-neutral-800 md:text-lg">Resources</p>
+              <div className="flex items-center gap-x-3">
+                <p className="field-section-label">Resources</p>
                 <Tag label="Optional" />
               </div>
               <p className="text-sm font-normal leading-normal text-neutral-500 md:text-base">
@@ -248,7 +255,7 @@ export default function Create() {
           <div className="mb-6 flex flex-col gap-y-2 md:gap-y-3">
             <div className="flex flex-col gap-0.5 md:gap-1">
               <div className="flex gap-x-3">
-                <p className="text-base font-normal leading-tight text-neutral-800 md:text-lg">Configuration</p>
+                <p className="field-section-label">Configuration</p>
               </div>
               <p className="text-sm font-normal leading-normal text-neutral-500 md:text-base">Configure the proposal</p>
             </div>
@@ -419,19 +426,15 @@ export default function Create() {
 
           {/* Submit */}
 
-          <div className="mt-6 flex w-full flex-col items-center">
-            <Button
-              isLoading={isCreating}
-              className="mt-3 border-primary-400"
-              size="lg"
-              variant={actions.length ? "primary" : "secondary"}
-              onClick={() => submitProposal()}
-            >
+          <div className="actions-row">
+            <Button isLoading={isCreating} size="lg" variant="primary" onClick={() => submitProposal()}>
               <If lengthOf={actions} above={0}>
                 <Then>Submit proposal</Then>
                 <Else>Submit signaling proposal</Else>
               </If>
             </Button>
+            <div className="flex-1" />
+            <span className="gas-note">Encrypted on-chain ballot</span>
           </div>
         </PlaceHolderOr>
       </div>

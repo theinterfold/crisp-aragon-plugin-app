@@ -1,5 +1,5 @@
 import { useAccount, useBlockNumber } from "wagmi";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ProposalCard from "../components/proposal";
 import {
   Button,
@@ -7,10 +7,9 @@ import {
   IconType,
   ProposalDataListItemSkeleton,
   ProposalStatus,
-  Toggle,
-  ToggleGroup,
   type DataListState,
 } from "@aragon/ods";
+import classNames from "classnames";
 import { useCanCreateProposal } from "../hooks/useCanCreateProposal";
 import Link from "next/link";
 import { Else, If, Then } from "@/components/if";
@@ -23,6 +22,16 @@ import type { Hex } from "viem";
 import { publicClient } from "../utils/client";
 
 const DEFAULT_PAGE_SIZE = 6;
+
+const FILTERS: { label: string; value: string }[] = [
+  { label: "All", value: "all" },
+  { label: "Active", value: ProposalStatus.ACTIVE },
+  { label: "Accepted", value: ProposalStatus.ACCEPTED },
+  { label: "Executable", value: ProposalStatus.EXECUTABLE },
+  { label: "Executed", value: ProposalStatus.EXECUTED },
+  { label: "Failed", value: ProposalStatus.FAILED },
+  { label: "Rejected", value: ProposalStatus.REJECTED },
+];
 
 interface ProposalCreatedLog {
   proposalId: bigint;
@@ -117,10 +126,11 @@ export default function Proposals() {
 
   return (
     <MainSection narrow={true}>
-      <SectionView>
-        <h1 className="line-clamp-1 flex flex-1 shrink-0 text-2xl font-normal leading-tight text-neutral-800 md:text-3xl">
-          Proposals
-        </h1>
+      <div className="page-head w-full">
+        <div>
+          <div className="kicker mb-3">02 · Governance</div>
+          <h1 className="display-title">Proposals</h1>
+        </div>
         <div className="justify-self-end">
           <If true={isConnected && canCreate}>
             <Link href="#/new">
@@ -130,7 +140,7 @@ export default function Proposals() {
             </Link>
           </If>
         </div>
-      </SectionView>
+      </div>
 
       <If not={proposalCount}>
         <Then>
@@ -140,22 +150,25 @@ export default function Proposals() {
           </MissingContentView>
         </Then>
         <Else>
-          <ToggleGroup isMultiSelect={false} value={statusFilter} onChange={(val) => setStatusFilter(val ?? "all")}>
-            <Toggle label="All" value="all" />
-            <Toggle label="Active" value={ProposalStatus.ACTIVE} />
-            <Toggle label="Accepted" value={ProposalStatus.ACCEPTED} />
-            <Toggle label="Executable" value={ProposalStatus.EXECUTABLE} />
-            <Toggle label="Executed" value={ProposalStatus.EXECUTED} />
-            <Toggle label="Failed" value={ProposalStatus.FAILED} />
-            <Toggle label="Rejected" value={ProposalStatus.REJECTED} />
-          </ToggleGroup>
+          <div className="chips">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                className={classNames("chip", { on: statusFilter === f.value })}
+                onClick={() => setStatusFilter(f.value)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
           <DataList.Root
             entityLabel={entityLabel}
             itemsCount={proposalCount}
             pageSize={DEFAULT_PAGE_SIZE}
             state={dataListState}
           >
-            <DataList.Container SkeletonElement={ProposalDataListItemSkeleton}>
+            <DataList.Container layoutClassName="proposal-list" SkeletonElement={ProposalDataListItemSkeleton}>
               {proposalIds.map((proposalId) => (
                 <ProposalCard
                   key={proposalId}
@@ -170,8 +183,4 @@ export default function Proposals() {
       </If>
     </MainSection>
   );
-}
-
-function SectionView({ children }: { children: ReactNode }) {
-  return <div className="flex w-full flex-row content-center justify-between">{children}</div>;
 }

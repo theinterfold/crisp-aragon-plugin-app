@@ -54,10 +54,7 @@ export const NavLink: React.FC<INavLinkProps> = (props) => {
     "group-hover:text-neutral-800", // hover styles
     "outline-none focus-visible:ring focus-visible:ring-primary focus-visible:ring-offset", // focus styles
     "flex h-12 flex-1 items-center justify-between gap-3 rounded-xl px-4 leading-tight", // mobile styles
-    "md:h-11 md:rounded-none md:px-0 md:leading-normal", // desktop nav styles
-    {
-      "bg-neutral-50 md:bg-neutral-0": selected,
-    }
+    "md:h-11 md:rounded-none md:px-0 md:leading-normal" // desktop nav styles
   );
 
   return (
@@ -73,9 +70,12 @@ export const NavLink: React.FC<INavLinkProps> = (props) => {
           />
         )}
         <span
-          className={classNames("flex-1 truncate text-neutral-500 group-hover:text-neutral-800", {
-            "text-neutral-800": selected,
-          })}
+          className={classNames(
+            "flex-1 truncate text-[13px] uppercase tracking-[0.12em] text-neutral-500 group-hover:text-neutral-800",
+            {
+              "text-neutral-800": selected,
+            }
+          )}
         >
           {name}
         </span>

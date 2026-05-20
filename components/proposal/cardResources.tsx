@@ -1,5 +1,5 @@
 import type { IProposalResource } from "@/utils/types";
-import { Card, CardEmptyState, Heading, IconType, Link } from "@aragon/ods";
+import { CardEmptyState, IconType, Link } from "@aragon/ods";
 import React from "react";
 
 interface ICardResourcesProps {
@@ -20,8 +20,8 @@ export const CardResources: React.FC<ICardResourcesProps> = (props) => {
   if (!Array.isArray(resources)) resources = [resources];
 
   return (
-    <Card className="flex flex-col gap-y-4 p-6 shadow-neutral">
-      <Heading size="h3">{title}</Heading>
+    <div className="flex flex-col gap-y-4 border border-neutral-800 bg-neutral-0 p-6">
+      <p className="section-label">— {title}</p>
       <div className="flex flex-col gap-y-4">
         {resources?.map((resource) => (
           <Link
@@ -36,6 +36,6 @@ export const CardResources: React.FC<ICardResourcesProps> = (props) => {
           </Link>
         ))}
       </div>
-    </Card>
+    </div>
   );
 };

@@ -1,52 +1,71 @@
-import { MainSection } from "@/components/layout/main-section";
-import { Button, IllustrationHuman } from "@aragon/ods";
-import { type ReactNode } from "react";
+import { Button } from "@aragon/ods";
 import { useAccount } from "wagmi";
 import { useWeb3Modal } from "@web3modal/wagmi/react";
-import { Else, If, Then } from "@/components/if";
+import Link from "next/link";
+import { plugins } from "@/plugins";
 
 export default function StandardHome() {
   const { isConnected } = useAccount();
   const { open } = useWeb3Modal();
 
+  const proposalsHref = `/plugins/${plugins[0]?.id ?? "crisp-token-voting"}/#/`;
+
   return (
-    <MainSection narrow={true}>
-      <Card>
-        <h1 className="line-clamp-1 flex flex-1 shrink-0 text-2xl font-normal leading-tight text-neutral-800 md:text-3xl">
-          Secret ballots for onchain governance
-        </h1>
-        <p className="text-md text-neutral-400">
-          A demonstration of confidential coordination for onchain organizations. Individual ballots remain hidden,
-          while the final outcome can be published and verified.
-        </p>
-        <div className="">
-          <IllustrationHuman className="mx-auto mb-10 max-w-96" body="BLOCKS" expression="SMILE_WINK" hairs="CURLY" />
-          <div className="flex justify-center">
-            <If true={!isConnected}>
-              <Then>
-                <Button size="md" variant="primary" onClick={() => open()}>
-                  <span>Connect wallet</span>
-                </Button>
-              </Then>
-            </If>
+    <section className="mint-slab">
+      <div className="mx-auto w-full max-w-screen-xl px-6 py-20">
+        {/* Serif marquee hero */}
+        <div className="serif-hero">
+          <div className="rail">
+            <span className="num">№ 01</span>
+            <span className="vline" />
+            <span className="label">
+              Secret
+              <br />
+              ballots
+            </span>
           </div>
+          <h1>
+            Secret ballots <span className="ital">without</span> the{" "}
+            <span className="strike">
+              trusted
+              <svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M2,16 Q60,4 120,10 T198,6" />
+              </svg>
+            </span>{" "}
+            third party.
+          </h1>
         </div>
-      </Card>
-    </MainSection>
+
+        {/* Lede + protocol notes */}
+        <div className="hero-body-grid">
+          <div />
+          <p className="lede">
+            <span className="dropcap">C</span>risp is a coercion-resistant protocol for digital decision-making.
+            Participants encrypt their votes under a shared public key; a quorum of independent custodians computes the
+            tally without ever decrypting an individual ballot.
+          </p>
+          <ul className="em-list self-center">
+            <li>Encrypted client-side</li>
+            <li>No trusted tallier</li>
+            <li>Public, verifiable outcome</li>
+            <li>Coercion resistant</li>
+          </ul>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-14 flex flex-wrap items-center gap-3">
+          {!isConnected && (
+            <Button size="lg" variant="primary" onClick={() => open()}>
+              Connect wallet
+            </Button>
+          )}
+          <Link href={proposalsHref}>
+            <Button size="lg" variant={isConnected ? "primary" : "tertiary"}>
+              View proposals
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
-
-// This should be encapsulated
-const Card = function ({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className="xs:px-10 mb-6 box-border flex
-    w-full flex-col space-y-6
-    rounded-xl border border-neutral-100
-    bg-neutral-0 px-4 py-5 focus:outline-none focus:ring focus:ring-primary
-    md:px-6 lg:px-7"
-    >
-      {children}
-    </div>
-  );
-};

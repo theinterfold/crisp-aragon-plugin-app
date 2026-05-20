@@ -1,11 +1,10 @@
-import { AvatarIcon, Breadcrumbs, Heading, type IBreadcrumbsLink, IconType, ProposalStatus, Tag } from "@aragon/ods";
-import { Publisher } from "@/components/publisher";
+import { ProposalStatus } from "@aragon/ods";
+import Link from "next/link";
 import type { Proposal } from "../../utils/types";
 import { useProposalStatus } from "../../hooks/useProposalStatus";
-import { Else, ElseIf, If, Then } from "@/components/if";
 import { HeaderSection } from "@/components/layout/header-section";
-import { getTagVariantFromStatus } from "@/utils/ui-variants";
-import { capitalizeFirstLetter, formatId } from "@/utils/text";
+import { capitalizeFirstLetter } from "@/utils/text";
+import { AddressText } from "@/components/text/address";
 import { useEffect, useState } from "react";
 
 const DEFAULT_PROPOSAL_TITLE = "(No proposal title)";
@@ -21,58 +20,52 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, 
   const proposalStatus = useProposalStatus(proposal, totalVotingPower);
   const countdown = useCountdown(Number(proposal.parameters.endDate) * 1000);
 
-  const tagVariant = getTagVariantFromStatus(proposalStatus);
-
-  const breadcrumbs: IBreadcrumbsLink[] = [{ label: "Proposals", href: "#/" }, { label: formatId(proposalIdx) }];
+  const statusClass = (proposalStatus ?? "").toString().toLowerCase();
   const isEmergency = proposal.parameters.startDate === 0n;
   const endDateIsInThePast = Number(proposal.parameters.endDate) * 1000 < Date.now();
 
+  let endLabel: string;
+  if (proposalStatus === ProposalStatus.ACCEPTED) endLabel = "Accepted";
+  else if (proposalStatus === ProposalStatus.REJECTED) endLabel = "Rejected";
+  else if (endDateIsInThePast) endLabel = "Voting closed";
+  else endLabel = `Ends in ${countdown}`;
+
   return (
     <div className="flex w-full justify-center bg-neutral-0">
-      {/* Wrapper */}
       <HeaderSection>
-        <Breadcrumbs
-          links={breadcrumbs}
-          tag={
-            proposalStatus && {
-              label: capitalizeFirstLetter(proposalStatus),
-              variant: tagVariant,
-            }
-          }
-        />
-        {/* Title & description */}
-        <div className="flex w-full flex-col gap-y-2">
-          <div className="flex w-full items-center gap-x-4">
-            <Heading size="h1">{proposal.title || DEFAULT_PROPOSAL_TITLE}</Heading>
-            {isEmergency && <Tag label="Emergency" variant="critical" />}
-          </div>
-          <p className="text-lg leading-normal text-neutral-500">{proposal.summary || DEFAULT_PROPOSAL_SUMMARY}</p>
+        {/* Breadcrumb / kicker */}
+        <div className="flex items-center gap-3">
+          <Link href="#/" className="detail-kicker hover:text-neutral-800">
+            Proposals
+          </Link>
+          <span className="detail-kicker">/</span>
+          <span className="detail-kicker">E3 · {proposal.e3Id.toString()}</span>
         </div>
-        {/* Metadata */}
-        <div className="flex flex-wrap gap-x-10 gap-y-2">
-          <div className="flex items-center gap-x-2">
-            <AvatarIcon icon={IconType.APP_MEMBERS} size="sm" variant="primary" />
-            <Publisher publisher={[{ address: proposal.creator }]} />
+
+        <div className="flex w-full flex-col">
+          <div className="flex flex-wrap items-center gap-3">
+            {proposalStatus && <span className={`badge ${statusClass}`}>{capitalizeFirstLetter(proposalStatus)}</span>}
+            {isEmergency && <span className="badge failed">Emergency</span>}
           </div>
-          <div className="flex items-center gap-x-2">
-            <AvatarIcon icon={IconType.APP_MEMBERS} size="sm" variant="primary" />
-            <div className="flex gap-x-1 text-base leading-tight ">
-              <If val={proposalStatus} is={ProposalStatus.ACCEPTED}>
-                <Then>
-                  <span className="text-neutral-500">The proposal has been accepted</span>
-                </Then>
-                <ElseIf val={proposalStatus} is={ProposalStatus.REJECTED}>
-                  <span className="text-neutral-500">The proposal has been rejected</span>
-                </ElseIf>
-                <ElseIf true={endDateIsInThePast}>
-                  <span className="text-neutral-500">The voting period is over</span>
-                </ElseIf>
-                <Else>
-                  <span className="text-neutral-500">Ends in </span>
-                  <span className="text-neutral-800">{countdown}</span>
-                </Else>
-              </If>
+          <h1 className="detail-title">{proposal.title || DEFAULT_PROPOSAL_TITLE}</h1>
+          <p className="detail-summary">{proposal.summary || DEFAULT_PROPOSAL_SUMMARY}</p>
+        </div>
+
+        {/* Metadata */}
+        <div className="detail-meta">
+          <div className="item">
+            <div className="lbl">Proposer</div>
+            <div className="val">
+              <AddressText bold={false}>{proposal.creator}</AddressText>
             </div>
+          </div>
+          <div className="item">
+            <div className="lbl">Status</div>
+            <div className="val">{proposalStatus ? capitalizeFirstLetter(proposalStatus) : "—"}</div>
+          </div>
+          <div className="item">
+            <div className="lbl">{endDateIsInThePast ? "Window" : "Ends"}</div>
+            <div className="val">{endLabel}</div>
           </div>
         </div>
       </HeaderSection>

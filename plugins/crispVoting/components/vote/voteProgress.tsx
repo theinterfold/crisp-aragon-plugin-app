@@ -55,23 +55,23 @@ const VotingStepIndicator: React.FC<VotingStepIndicatorProps> = ({ step, message
   const progressPercent = step === "complete" ? 100 : ((currentStepIndex + 0.5) / steps.length) * 100;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-100">
-      {/* Gradient progress track */}
+    <div className="overflow-hidden border border-neutral-200">
+      {/* Progress track */}
       <div className="relative h-1 w-full bg-neutral-100">
         <div
-          className="absolute inset-y-0 left-0 rounded-r-full transition-all duration-700 ease-out"
+          className="absolute inset-y-0 left-0 transition-all duration-700 ease-out"
           style={{
             width: `${progressPercent}%`,
             background: isError
-              ? "linear-gradient(90deg, #fca5a5, #ef4444)"
+              ? "linear-gradient(90deg, var(--accent-soft), #a84932)"
               : isComplete
-                ? "linear-gradient(90deg, #86efac, #22c55e)"
-                : "linear-gradient(90deg, #22c55e, #3b82f6)",
+                ? "var(--accent)"
+                : "linear-gradient(90deg, var(--ink-soft), var(--accent))",
           }}
         />
       </div>
 
-      <div className="from-neutral-50/80 to-white flex flex-col gap-4 bg-gradient-to-b px-5 py-4">
+      <div className="flex flex-col gap-4 px-5 py-4" style={{ background: "var(--cream)" }}>
         {/* Steps row */}
         <div className="flex items-start justify-between">
           {steps.map((s, index) => {
@@ -99,10 +99,12 @@ const VotingStepIndicator: React.FC<VotingStepIndicatorProps> = ({ step, message
 
         {/* Message */}
         <div
-          className="font-medium flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
+          className="font-medium flex items-center gap-2 px-3 py-2 text-xs"
           style={{
-            backgroundColor: isError ? "#fef2f2" : isComplete ? "#f0fdf4" : "#f0f9ff",
-            color: isError ? "#dc2626" : isComplete ? "#16a34a" : "#2563eb",
+            backgroundColor: isError ? "#f3d6c8" : isComplete ? "var(--mint-pale)" : "var(--mint)",
+            color: isError ? "#7a3322" : isComplete ? "var(--accent)" : "var(--ink-soft)",
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.04em",
           }}
         >
           {!isComplete && !isError && (
@@ -159,12 +161,12 @@ const VotingStepIndicator: React.FC<VotingStepIndicatorProps> = ({ step, message
 
       <style>{`
         @keyframes step-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3); }
-          50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(47, 138, 79, 0.3); }
+          50% { box-shadow: 0 0 0 6px rgba(47, 138, 79, 0); }
         }
         @keyframes step-pulse-error {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
-          50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(168, 73, 50, 0.3); }
+          50% { box-shadow: 0 0 0 6px rgba(168, 73, 50, 0); }
         }
         @keyframes dash-flow {
           to { stroke-dashoffset: -8; }
@@ -182,10 +184,10 @@ const StepNode: React.FC<{
   iconPath: string;
 }> = ({ status, label, iconPath }) => {
   const colors: Record<StepStatus, { bg: string; border: string; icon: string; label: string }> = {
-    complete: { bg: "#f0fdf4", border: "#22c55e", icon: "#22c55e", label: "#16a34a" },
-    active: { bg: "#eff6ff", border: "#3b82f6", icon: "#3b82f6", label: "#2563eb" },
-    error: { bg: "#fef2f2", border: "#ef4444", icon: "#ef4444", label: "#dc2626" },
-    pending: { bg: "#f9fafb", border: "#e5e7eb", icon: "#d1d5db", label: "#9ca3af" },
+    complete: { bg: "var(--mint-pale)", border: "var(--accent)", icon: "var(--accent)", label: "var(--accent)" },
+    active: { bg: "var(--mint)", border: "var(--ink)", icon: "var(--ink)", label: "var(--ink-soft)" },
+    error: { bg: "#f3d6c8", border: "#a84932", icon: "#a84932", label: "#7a3322" },
+    pending: { bg: "transparent", border: "var(--cream-line)", icon: "var(--muted-2)", label: "var(--muted)" },
   };
 
   const c = colors[status];
@@ -261,7 +263,7 @@ const StepConnector: React.FC<{ filled: boolean; isError: boolean }> = ({ filled
     return (
       <div
         className="h-0.5 w-full rounded-full transition-all duration-700"
-        style={{ backgroundColor: isError ? "#fca5a5" : "#86efac" }}
+        style={{ backgroundColor: isError ? "#d89a85" : "var(--accent-soft)" }}
       />
     );
   }
@@ -273,7 +275,7 @@ const StepConnector: React.FC<{ filled: boolean; isError: boolean }> = ({ filled
         y1="1"
         x2="100%"
         y2="1"
-        stroke="#e5e7eb"
+        stroke="var(--cream-line)"
         strokeWidth="2"
         strokeDasharray="4 4"
         style={{ animation: "dash-flow 0.8s linear infinite" }}
