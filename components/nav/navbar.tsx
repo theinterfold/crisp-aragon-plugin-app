@@ -92,7 +92,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <>
-      <nav className="h-30 sticky top-0 z-[var(--hub-navbar-z-index)] flex w-full select-none items-center justify-center border-b border-b-neutral-100 bg-neutral-0">
+      <nav className="h-30 sticky top-0 z-[var(--hub-navbar-z-index)] flex w-full select-none items-center justify-center border-b border-b-neutral-800 bg-neutral-50">
         <div className="w-full max-w-[1280px] flex-col gap-2 p-3 md:px-6 md:pb-0 lg:gap-3">
           <div className="flex w-full items-center justify-between">
             <div className="pb-3 lg:ml-10">
@@ -112,7 +112,10 @@ export const Navbar: React.FC = () => {
 
             <div className="flex items-center gap-x-2">
               <div className="shrink-0">
-                <Button onClick={mintTestTokens}> {isConfirming ? <Spinner size="sm" /> : "Mint test tokens"} </Button>
+                <Button className="btn-mint" onClick={mintTestTokens}>
+                  {" "}
+                  {isConfirming ? <Spinner size="sm" /> : "Mint test tokens"}{" "}
+                </Button>
               </div>
               <div className="shrink-0">
                 <WalletContainer />

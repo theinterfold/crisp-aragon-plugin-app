@@ -88,6 +88,8 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
               />
             </If>
             <ProposalActions actions={proposal.actions} />
+          </div>
+          <div className="flex flex-col gap-y-6 md:sticky md:top-24 md:w-[33%] md:self-start">
             {proposalStatus === ProposalStatus.ACTIVE && (
               <VoteCard
                 error={canVote === false ? "You cannot vote on this proposal" : undefined}
@@ -112,12 +114,10 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
               />
             )}
             {error && (
-              <div className="bg-critical-50 rounded-lg border border-critical-200 px-4 py-3">
+              <div className="border border-critical-200 bg-critical-100 px-4 py-3">
                 <p className="text-sm text-critical-600">{error}</p>
               </div>
             )}
-          </div>
-          <div className="flex flex-col gap-y-6 md:w-[33%]">
             {proposalStatus !== ProposalStatus.ACTIVE && (
               <VoteResultCard
                 isSignalling={proposal.actions && proposal.actions.length === 0}

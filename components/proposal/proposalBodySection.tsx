@@ -1,4 +1,4 @@
-import { CardCollapsible, DocumentParser, Heading } from "@aragon/ods";
+import { CardCollapsible, DocumentParser } from "@aragon/ods";
 import classNames from "classnames";
 
 interface IBodySectionProps {
@@ -12,14 +12,13 @@ export const BodySection: React.FC<IBodySectionProps> = (props) => {
 
   return (
     <CardCollapsible
-      buttonLabelClosed="Expend description"
+      buttonLabelClosed="Read full description"
       buttonLabelOpened="Read less"
       collapsedSize="md"
-      className="w-full shadow-neutral"
+      className="w-full !rounded-none !border-neutral-800 !shadow-none"
     >
-      <div className="flex flex-col gap-y-4">
-        <Heading size="h2">Proposal description</Heading>
-        <hr className="border-neutral-100" />
+      <div className="detail-body flex flex-col gap-y-4">
+        <p className="section-label">— Description</p>
         <DocumentParser document={body} className={proseClasses} />
       </div>
     </CardCollapsible>
