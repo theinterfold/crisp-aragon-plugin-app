@@ -15,7 +15,7 @@ export const BodySection: React.FC<IBodySectionProps> = (props) => {
       buttonLabelClosed="Read full description"
       buttonLabelOpened="Read less"
       collapsedSize="md"
-      className="w-full !rounded-none !border-neutral-800 !shadow-none"
+      className="w-full !rounded-none !border !border-neutral-800 !shadow-none"
     >
       <div className="detail-body flex flex-col gap-y-4">
         <p className="section-label">— Description</p>
