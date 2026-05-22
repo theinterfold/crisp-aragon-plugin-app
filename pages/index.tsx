@@ -3,6 +3,7 @@ import { useAccount } from "wagmi";
 import { useWeb3Modal } from "@web3modal/wagmi/react";
 import Link from "next/link";
 import { plugins } from "@/plugins";
+import { PUB_CRISP_INFO_URL } from "@/constants";
 
 export default function StandardHome() {
   const { isConnected } = useAccount();
@@ -40,15 +41,15 @@ export default function StandardHome() {
         <div className="hero-body-grid">
           <div />
           <p className="lede">
-            <span className="dropcap">C</span>risp is a coercion-resistant protocol for digital decision-making.
-            Participants encrypt their votes under a shared public key; a quorum of independent custodians computes the
-            tally without ever decrypting an individual ballot.
+            <span className="dropcap">C</span>RISP is a secret ballot protocol for digital decision-making, built on the
+            Interfold and the Aragon OSx stack. Participants submit encrypted votes, and a committee of independent
+            ciphernodes coordinates a verifiable tally without exposing individual ballots.
           </p>
           <ul className="em-list self-center">
-            <li>Encrypted client-side</li>
+            <li>Client-side encryption</li>
             <li>No trusted tallier</li>
-            <li>Public, verifiable outcome</li>
-            <li>Coercion resistant</li>
+            <li>Coercion resistance</li>
+            <li>Verifiable public result</li>
           </ul>
         </div>
 
@@ -64,6 +65,9 @@ export default function StandardHome() {
               View proposals
             </Button>
           </Link>
+          <a href={PUB_CRISP_INFO_URL} target="_blank" rel="noreferrer" className="hero-text-link">
+            Learn how CRISP works →
+          </a>
         </div>
       </div>
     </section>

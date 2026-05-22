@@ -417,6 +417,22 @@ label div p.leading-tight {
   text-underline-offset: 4px;
 }
 
+/* Inline text link beside the hero buttons */
+.hero-text-link {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.hero-text-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 /* Hairline section rule */
 .section-rule {
   border: 0;
