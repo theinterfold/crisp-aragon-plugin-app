@@ -49,13 +49,13 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
       return;
     }
 
-    postVote(BigInt(optionIndex), proposal.e3Id);
+    postVote(BigInt(optionIndex), proposal.e3Id, proposal.parameters.snapshotBlock);
   };
 
   const onMask = () => {
     if (!proposal) return;
     // Mask uses the next index after the last option
-    postVote(BigInt(options.length), proposal.e3Id, true);
+    postVote(BigInt(options.length), proposal.e3Id, proposal.parameters.snapshotBlock, true);
   };
 
   const hasBalance = !!balance && balance > ZERO;
