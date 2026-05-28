@@ -103,7 +103,6 @@ export interface IRoundDetailsResponse {
   start_time: string;
   duration: string;
   expiration: string;
-  start_block: string;
   committee_public_key: number[];
   emojis: [string, string];
   token_address: string;

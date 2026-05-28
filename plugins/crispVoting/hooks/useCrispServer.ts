@@ -21,7 +21,7 @@ export const CRISP_SERVER_STATE_ELIGIBLE_VOTERS = "state/eligible-addresses";
 interface CrispServerState {
   isLoading: boolean;
   error: string;
-  postVote: (voteOption: bigint, e3Id: bigint, isAMask?: boolean) => Promise<void>;
+  postVote: (voteOption: bigint, e3Id: bigint, snapshotBlock: bigint, isAMask?: boolean) => Promise<void>;
   votingStep: VotingStep;
   lastActiveStep: VotingStep | null;
   stepMessage: string;
@@ -191,7 +191,7 @@ export function useCrispServer(): CrispServerState {
     };
   };
 
-  const postVote = async (voteOption: bigint, e3Id: bigint, isAMask: boolean = false) => {
+  const postVote = async (voteOption: bigint, e3Id: bigint, snapshotBlock: bigint, isAMask: boolean = false) => {
     setIsLoading(true);
     try {
       if (!address) {
@@ -223,7 +223,7 @@ export function useCrispServer(): CrispServerState {
         voteData = await handleVote(
           e3Id,
           voteOption,
-          BigInt(roundState.start_block) - 1n,
+          snapshotBlock,
           Number.parseInt(roundState.num_options),
           roundState
         );
