@@ -17,6 +17,8 @@ export type ProposalParameters = {
   endDate: bigint;
   snapshotBlock: bigint;
   minVotingPower: bigint;
+  minParticipation?: bigint;
+  creditMode?: CreditsMode;
 };
 
 export type Tally = bigint[];

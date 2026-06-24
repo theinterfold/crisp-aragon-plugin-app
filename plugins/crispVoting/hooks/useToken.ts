@@ -23,13 +23,24 @@ export function useToken() {
     functionName: "symbol",
   });
 
+  const {
+    data: tokenDecimals,
+    isError: isError3,
+    isLoading: isLoading3,
+  } = useReadContract({
+    address: PUB_TOKEN_ADDRESS,
+    abi: erc20Abi,
+    functionName: "decimals",
+  });
+
   return {
     address: PUB_TOKEN_ADDRESS,
     tokenSupply,
     symbol: tokenSymbol,
+    decimals: tokenDecimals,
     status: {
-      isLoading: isLoading1 || isLoading2,
-      isError: isError1 || isError2,
+      isLoading: isLoading1 || isLoading2 || isLoading3,
+      isError: isError1 || isError2 || isError3,
     },
   };
 }

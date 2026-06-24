@@ -13,11 +13,11 @@ const DEFAULT_PROPOSAL_SUMMARY = "(No proposal summary)";
 interface ProposalHeaderProps {
   proposalIdx: bigint;
   proposal: Proposal;
-  totalVotingPower?: bigint;
+  e3Failed?: boolean;
 }
 
-const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, totalVotingPower }) => {
-  const proposalStatus = useProposalStatus(proposal, totalVotingPower);
+const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, e3Failed }) => {
+  const proposalStatus = useProposalStatus(proposal, e3Failed);
   const countdown = useCountdown(Number(proposal.parameters.endDate) * 1000);
 
   const statusClass = (proposalStatus ?? "").toString().toLowerCase();

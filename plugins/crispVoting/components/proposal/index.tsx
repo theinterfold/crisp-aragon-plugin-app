@@ -30,8 +30,8 @@ function LoadingRow({ proposalId, message }: { proposalId: bigint; message: stri
 }
 
 export default function ProposalCard(props: ProposalInputs) {
-  const { proposal, totalVotingPower, status: proposalFetchStatus } = useProposal(props.proposalId);
-  const proposalStatus = useProposalStatus(proposal!, totalVotingPower);
+  const { proposal, e3Failed, status: proposalFetchStatus } = useProposal(props.proposalId);
+  const proposalStatus = useProposalStatus(proposal!, e3Failed);
 
   const showLoading = getShowProposalLoading(proposal, proposalFetchStatus);
   const e3Label = proposal ? `E3 · ${proposal.e3Id.toString()}` : "E3 · …";

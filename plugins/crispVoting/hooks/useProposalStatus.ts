@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { ProposalStatus } from "@aragon/ods";
 import { useToken } from "./useToken";
+import { usePastSupply } from "./usePastSupply";
+import { computeQuorum, isSignalingOnly } from "../utils/quorum";
 
 import type { Proposal } from "../utils/types";
 
@@ -42,30 +44,47 @@ function isRejected(tally: bigint[], numOptions: number): boolean {
   return false;
 }
 
-export const useProposalStatus = (proposal: Proposal, totalVotingPowerOverride?: bigint) => {
+export const useProposalStatus = (proposal: Proposal, e3Failed = false) => {
   const [status, setStatus] = useState<ProposalStatus>(ProposalStatus.PENDING);
 
-  const { tokenSupply: totalSupply } = useToken();
-
-  const effectiveTotalSupply = totalVotingPowerOverride ?? totalSupply;
+  const { decimals } = useToken();
+  // Quorum uses the total voting power at the snapshot block, mirroring the
+  // contract's `totalVotingPower(snapshotBlock)` (= getPastTotalSupply).
+  const pastSupply = usePastSupply(proposal?.parameters?.snapshotBlock);
 
   useEffect(() => {
-    if (!proposal || !proposal?.parameters || !effectiveTotalSupply) return;
+    if (!proposal || !proposal?.parameters) return;
 
     const tally = proposal.tally ?? [];
     const numOptions = proposal.numOptions ?? tally.length;
     const totalVotes = getTotalVotes(tally);
-    const minVotingPower = (effectiveTotalSupply * BigInt(proposal.parameters.minVotingPower)) / BigInt(100);
+
+    // Signaling-only proposals (polls) have no quorum / pass-fail concept; their
+    // tally is informational only. Quorum gating applies to executable proposals.
+    const signaling = isSignalingOnly(numOptions, proposal.parameters.creditMode);
+    const quorum = signaling
+      ? null
+      : computeQuorum(
+          totalVotes,
+          pastSupply,
+          Number(proposal.parameters.minParticipation ?? 0n),
+          proposal.parameters.creditMode,
+          Number(decimals ?? 18)
+        );
 
     if (proposal?.active) {
       setStatus(ProposalStatus.ACTIVE);
     } else if (proposal?.executed) {
       setStatus(ProposalStatus.EXECUTED);
+    } else if (e3Failed) {
+      // The encrypted vote round failed on-chain (e.g. committee/DKG failure):
+      // it can never be tallied or executed.
+      setStatus(ProposalStatus.FAILED);
     } else if (!proposal?.isTallied) {
       setStatus(ProposalStatus.PENDING);
     } else if (totalVotes === 0n) {
       setStatus(ProposalStatus.FAILED);
-    } else if (totalVotes < minVotingPower) {
+    } else if (quorum && !quorum.reached) {
       setStatus(ProposalStatus.FAILED);
     } else if (hasPassed(tally, numOptions) && proposal.actions.length > 0) {
       setStatus(ProposalStatus.EXECUTABLE);
@@ -76,7 +95,7 @@ export const useProposalStatus = (proposal: Proposal, totalVotingPowerOverride?:
     } else {
       setStatus(ProposalStatus.PENDING);
     }
-  }, [proposal, effectiveTotalSupply]);
+  }, [proposal, pastSupply, decimals, e3Failed]);
 
   return status;
 };

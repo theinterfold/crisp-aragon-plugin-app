@@ -24,12 +24,18 @@ const ZERO = BigInt(0);
 export default function ProposalDetail({ index: proposalIdx }: { index: bigint }) {
   const { address } = useAccount();
   const { isLoading, error, postVote, votingStep, lastActiveStep, stepMessage, txHash } = useCrispServer();
-  const { proposal, isCommitteeReady, totalVotingPower, status: proposalFetchStatus } = useProposal(proposalIdx);
+  const {
+    proposal,
+    isCommitteeReady,
+    e3Failed,
+    e3FailureReason,
+    status: proposalFetchStatus,
+  } = useProposal(proposalIdx);
   const canVote = useCanVote(proposalIdx);
   const { balance, delegatesTo } = useTokenVotes(address);
 
   const showProposalLoading = getShowProposalLoading(proposal, proposalFetchStatus);
-  const proposalStatus = useProposalStatus(proposal!, totalVotingPower);
+  const proposalStatus = useProposalStatus(proposal!, e3Failed);
 
   const results = useMemo(() => {
     if (!proposal || !proposal.options || !proposal.tally) return undefined;
@@ -72,7 +78,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
 
   return (
     <section className="flex w-screen min-w-full max-w-full flex-col items-center">
-      <ProposalHeader proposalIdx={proposalIdx} proposal={proposal} totalVotingPower={totalVotingPower} />
+      <ProposalHeader proposalIdx={proposalIdx} proposal={proposal} e3Failed={e3Failed} />
 
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:px-16 md:pb-20 md:pt-10">
         <div className="flex w-full flex-col gap-x-12 gap-y-6 md:flex-row">
@@ -123,7 +129,17 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
                 isSignalling={proposal.actions && proposal.actions.length === 0}
                 proposalId={proposalIdx}
                 results={results}
-                isTallied={proposal.isTallied}
+                // Only treat as tallied once the tally array has actually loaded
+                // (an unloaded tally is []; a genuinely-zero round is [0,0]); avoids
+                // a flash of "no votes were cast" before the on-chain read resolves.
+                isTallied={proposal.isTallied && (proposal.tally?.length ?? 0) > 0}
+                proposalStatus={proposalStatus}
+                minParticipation={Number(proposal.parameters.minParticipation ?? 0n)}
+                snapshotBlock={proposal.parameters.snapshotBlock}
+                numOptions={proposal.numOptions}
+                creditMode={proposal.parameters.creditMode}
+                e3Failed={e3Failed}
+                e3FailureReason={e3FailureReason}
               />
             )}
             <CardResources resources={proposal.resources} title="Resources" />

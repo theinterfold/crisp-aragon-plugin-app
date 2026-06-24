@@ -42,18 +42,31 @@ export const Navbar: React.FC = () => {
     args: [address!],
   });
 
-  const { data: balanceEnclaveFee } = useReadContract({
+  const { data: daoDecimals } = useReadContract({
+    chainId: PUB_CHAIN.id,
+    abi: iVotesAbi,
+    address: PUB_TOKEN_ADDRESS,
+    functionName: "decimals",
+  });
+
+  const { data: feeDecimals } = useReadContract({
     chainId: PUB_CHAIN.id,
     abi: iVotesAbi,
     address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
-    functionName: "balanceOf",
-    args: [address!],
+    functionName: "decimals",
   });
 
   const { writeContract, isConfirming } = useTransactionManager({
     onSuccessMessage: "Tokens minted",
     onErrorMessage: "Could not mint test tokens",
   });
+
+  // Whole-token amounts each faucet click hands out. Scaled by the token's own
+  // decimals at mint time (the fee token is 6-decimal USDC, the DAO token 18).
+  const DAO_FAUCET_TOKENS = 1n;
+  const FEE_FAUCET_TOKENS = 1000n; // ~69 proposals at the current ~14.4 fee
+
+  const toBaseUnits = (whole: bigint, decimals: number) => whole * 10n ** BigInt(decimals);
 
   const mintTestTokens = () => {
     // you first need to connect your wallet
@@ -62,32 +75,27 @@ export const Navbar: React.FC = () => {
       return;
     }
 
-    // check balance
+    // DAO voting token: only ever needed once, so mint a single token when empty.
     if (balanceDAO === 0n) {
-      // mint dao tokens
       writeContract({
         chainId: PUB_CHAIN.id,
         abi: iVotesAbi,
         address: PUB_TOKEN_ADDRESS,
         functionName: "mint",
-        args: [address, BigInt(1e18)],
+        args: [address, toBaseUnits(DAO_FAUCET_TOKENS, Number(daoDecimals ?? 18))],
       });
     } else {
       addAlert("You already have DAO tokens", { timeout: 1000 });
     }
 
-    if (balanceEnclaveFee === 0n) {
-      // mint enclave fee tokens
-      writeContract({
-        chainId: PUB_CHAIN.id,
-        abi: iVotesAbi,
-        address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
-        functionName: "mint",
-        args: [address, BigInt(10000e18)],
-      });
-    } else {
-      addAlert("You already have Fee tokens", { timeout: 1000 });
-    }
+    // Fee token (USDC): consumed on every proposal, so always top up on click.
+    writeContract({
+      chainId: PUB_CHAIN.id,
+      abi: iVotesAbi,
+      address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
+      functionName: "mint",
+      args: [address, toBaseUnits(FEE_FAUCET_TOKENS, Number(feeDecimals ?? 6))],
+    });
   };
 
   return (

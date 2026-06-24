@@ -11,6 +11,7 @@ import type { IRoundDetailsResponse, Proposal, Tally } from "../utils/types";
 import type { AbiEvent, Hex } from "viem";
 import { CreditsMode } from "../utils/types";
 import { CRISP_SERVER_STATE_LITE_ROUTE, CRISP_SERVER_STATE_ELIGIBLE_VOTERS } from "./useCrispServer";
+import { useE3Status } from "./useE3Status";
 
 type ProposalCreatedLogResponse = {
   args: {
@@ -52,7 +53,7 @@ export function useProposal(proposalId: bigint) {
   const [totalVotingPower, setTotalVotingPower] = useState<bigint | undefined>(undefined);
 
   // On-chain tally
-  const { data: tallyResult } = useReadContract({
+  const { data: tallyResult, refetch: refetchTally } = useReadContract({
     chainId: PUB_CHAIN_ID,
     address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
     abi: CrispVotingAbi,
@@ -62,17 +63,38 @@ export function useProposal(proposalId: bigint) {
 
   const proposalRaw = proposalResult as Proposal | undefined;
 
+  // Fallback: when the CRISP server can't give us a usable round state (committee
+  // not ready and not tallied), consult the Enclave/Interfold contract for the
+  // authoritative E3 stage — this is how we detect a failed round (e.g. the
+  // committee couldn't be formed or DKG timed out).
+  const { isFailed: e3Failed, failureReason: e3FailureReason } = useE3Status(
+    proposalRaw?.e3Id,
+    !isCommitteeReady && !isTallied
+  );
+
   const tally: Tally = useMemo(() => {
     if (!tallyResult) return [];
     const result = tallyResult as { counts?: bigint[] };
     return Array.isArray(result.counts) ? result.counts : [];
   }, [tallyResult]);
 
+  // The on-chain `getTally` read fires once on mount, but the tally isn't decodable
+  // until the round has finished and CRISP has published it — so a fresh page load
+  // can land before it's ready and show "no votes were cast". Once the round reports
+  // finished, refetch on each new block until the tally actually arrives.
+  useEffect(() => {
+    if (!isTallied) return;
+    if (tally.length > 0) return;
+    void refetchTally();
+  }, [isTallied, blockNumber, tally.length, refetchTally]);
+
   const eligibleVotersFetched = useRef(false);
 
   useEffect(() => {
     if (proposalRaw?.e3Id === undefined) return;
     if (isTallied && isCommitteeReady) return;
+    // Round failed on-chain (committee/DKG): no point polling the CRISP server.
+    if (e3Failed) return;
 
     const roundId = Number(proposalRaw.e3Id.toString());
 
@@ -107,7 +129,7 @@ export function useProposal(proposalId: bigint) {
         }
       })
       .catch(() => {});
-  }, [proposalRaw?.e3Id, blockNumber, isTallied, isCommitteeReady]);
+  }, [proposalRaw?.e3Id, blockNumber, isTallied, isCommitteeReady, e3Failed]);
 
   // Fetch creation event (only once when proposal data is available)
   const snapshotBlock = proposalRaw?.parameters?.snapshotBlock;
@@ -155,6 +177,8 @@ export function useProposal(proposalId: bigint) {
     proposal,
     isCommitteeReady,
     totalVotingPower,
+    e3Failed,
+    e3FailureReason,
     status: {
       proposalReady: proposalFetchStatus === "idle",
       proposalLoading: proposalFetchStatus === "fetching",
