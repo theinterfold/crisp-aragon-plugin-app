@@ -76,7 +76,7 @@ export const VoteCard = ({
 
         <p className="vp-note">
           Submit your vote to the CRISP server. You can override it any time during the voting window. Results are
-          tallied by the Enclave network after the period ends.
+          tallied by the committee after the period ends.
         </p>
 
         {(isLoading || txHash || votingStep === "error" || votingStep === "complete") && (
@@ -177,7 +177,7 @@ export const VoteCard = ({
       <div className="privacy">
         <span className="dot" />
         <div>
-          Ballots are encrypted client-side and tallied inside a committee-controlled enclave. Individual votes are{" "}
+          Ballots are encrypted client-side and tallied inside a committee-controlled environment. Individual votes are{" "}
           <em>never</em> revealed.
         </div>
       </div>

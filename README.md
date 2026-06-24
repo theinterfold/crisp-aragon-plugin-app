@@ -4,7 +4,7 @@
 
 ## Overview
 
-This project is a frontend to demo a governance plugin built using [Aragon OSx](https://www.aragon.org/osx) and [Enclave](enclave.gg).
+This project is a frontend to demo a governance plugin built using [Aragon OSx](https://www.aragon.org/osx) and CRISP.
 
 The CRISP on Aragon plugin provides private and coercion resistent voting to DAO using the Aragon OSx stack.
 
@@ -12,7 +12,7 @@ The CRISP on Aragon plugin provides private and coercion resistent voting to DAO
 
 This section displays all the proposals which need to be ratified by the community of token holders. Proposals allow anyone with a certain token balance to vote, and all votes are always kept private.
 
-The Enclave network will tally the votes when a proposal ends and report the result back to the smart contracts which will then allow proposals to be executed if they pass.
+The committee will tally the votes when a proposal ends and report the result back to the smart contracts which will then allow proposals to be executed if they pass.
 
 ## Getting Started with the UI
 
@@ -55,7 +55,7 @@ NEXT_PUBLIC_SECONDS_PER_BLOCK=12
 # The block number where the plugin was deployed (used to speed up event queries)
 NEXT_PUBLIC_PLUGIN_DEPLOYMENT_BLOCK=0
 
-# Enclave
+# CRISP server
 NEXT_PUBLIC_CRISP_SERVER_URL="http://127.0.0.1:4000"
 
 # Network and services
@@ -70,11 +70,11 @@ NEXT_PUBLIC_PINATA_JWT="..."
 
 - `NEXT_PUBLIC_DAO_ADDRESS` - The address of the DAO where the CRISP Voting plugin is installed.
 - `NEXT_PUBLIC_TOKEN_ADDRESS` - The address of the ERC20 token used for voting power in the DAO.
-- `NEXT_PUBLIC_ENCLAVE_FEE_TOKEN_ADDRESS` - The address of the ERC20 token used to pay fees to the Enclave network.
+- `NEXT_PUBLIC_ENCLAVE_FEE_TOKEN_ADDRESS` - The address of the ERC20 token used to pay fees to the committee.
 - `NEXT_PUBLIC_CRISP_VOTING_PLUGIN_ADDRESS` - The address of the CRISP Voting plugin contract.
 - `NEXT_PUBLIC_SECONDS_PER_BLOCK` - Average number of seconds per block for the specified network. (Ethereum and Sepolia have 12 seconds)
 - `NEXT_PUBLIC_PLUGIN_DEPLOYMENT_BLOCK` - The block number where the CRISP Voting plugin was deployed. This helps speed up event queries.
-- `NEXT_PUBLIC_CRISP_SERVER_URL` - The URL of the Enclave server to manage CRISP and Enclave data such as round details, encryption public key and more.
+- `NEXT_PUBLIC_CRISP_SERVER_URL` - The URL of the CRISP server to manage CRISP data such as round details, encryption public key and more.
 - `NEXT_PUBLIC_CHAIN_NAME` - The name of the Ethereum network you are using (e.g., mainnet, sepolia, goerli).
 - `NEXT_PUBLIC_WEB3_ENDPOINT` - An Ethereum node endpoint for the specified network. You can use services like [Alchemy](https://www.alchemy.com/) or [Infura](https://infura.io/) to get a free endpoint. This helps speed up the loading of blockchain data such as proposal details.
 - `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` can be obtained by signing up at [WalletConnect](https://walletconnect.com/) and creating a new project.

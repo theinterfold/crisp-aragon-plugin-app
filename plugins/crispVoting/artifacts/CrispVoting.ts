@@ -124,6 +124,7 @@ export const CrispVotingAbi = [
               { name: "snapshotBlock", type: "uint256", internalType: "uint256" },
               { name: "minVotingPower", type: "uint256", internalType: "uint256" },
               { name: "minParticipation", type: "uint256", internalType: "uint256" },
+              { name: "creditMode", type: "uint8", internalType: "enum ICRISP.CreditMode" },
             ],
           },
           {
