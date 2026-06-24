@@ -86,7 +86,7 @@ export const Navbar: React.FC = () => {
         args: [address, BigInt(10000e18)],
       });
     } else {
-      addAlert("You already have Enclave Fee tokens", { timeout: 1000 });
+      addAlert("You already have Fee tokens", { timeout: 1000 });
     }
   };
 

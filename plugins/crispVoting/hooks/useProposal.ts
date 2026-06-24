@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useBlockNumber, useReadContract } from "wagmi";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
-import { PUB_CRISP_SERVER_URL, PUB_CRISP_VOTING_PLUGIN_ADDRESS } from "@/constants";
+import { PUB_CHAIN_ID, PUB_CRISP_SERVER_URL, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
 import { useMetadata } from "@/hooks/useMetadata";
 import { getAbiItem, fromHex } from "viem";
 import { publicClient } from "../utils/client";
@@ -40,6 +40,7 @@ export function useProposal(proposalId: bigint) {
     error: proposalError,
     fetchStatus: proposalFetchStatus,
   } = useReadContract({
+    chainId: PUB_CHAIN_ID,
     address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
     abi: CrispVotingAbi,
     functionName: "getProposal",
@@ -52,6 +53,7 @@ export function useProposal(proposalId: bigint) {
 
   // On-chain tally
   const { data: tallyResult } = useReadContract({
+    chainId: PUB_CHAIN_ID,
     address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
     abi: CrispVotingAbi,
     functionName: "getTally",
@@ -118,7 +120,10 @@ export function useProposal(proposalId: bigint) {
         address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
         event: ProposalCreatedEvent,
         args: { proposalId },
-        fromBlock: snapshotBlock,
+        // Use the plugin deployment block, not snapshotBlock: for proposals whose
+        // voting starts in the future, snapshotBlock is a block that hasn't been
+        // mined yet, so the ProposalCreated event would fall outside the range.
+        fromBlock: BigInt(PUB_DEPLOYMENT_BLOCK),
       })
       .then((logs) => {
         if (!logs?.length) return;
@@ -130,7 +135,9 @@ export function useProposal(proposalId: bigint) {
       .catch((err) => {
         console.error("Could not fetch proposal creation event", err);
       });
-  }, [proposalId, snapshotBlock, creationEvent]);
+    // `blockNumber` is included so the lookup retries on each new block until the
+    // ProposalCreated event is indexed by the RPC (it may lag right after creation).
+  }, [proposalId, snapshotBlock, creationEvent, blockNumber]);
 
   // JSON metadata
   const {

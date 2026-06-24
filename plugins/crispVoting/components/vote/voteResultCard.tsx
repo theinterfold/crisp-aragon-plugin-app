@@ -76,7 +76,7 @@ export const VoteResultCard = ({ results, proposalId, isSignalling, isTallied = 
             <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
           <p className="vp-note text-center">
-            Results are being tallied by the Enclave network. This may take a few minutes.
+            Results are being tallied by the committee. This may take a few minutes.
           </p>
         </div>
       </div>
