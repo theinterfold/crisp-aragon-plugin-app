@@ -79,13 +79,13 @@ export const useProposalStatus = (proposal: Proposal, e3Failed = false) => {
     } else if (e3Failed) {
       // The encrypted vote round failed on-chain (e.g. committee/DKG failure):
       // it can never be tallied or executed.
-      setStatus(ProposalStatus.FAILED);
+      setStatus(ProposalStatus.REJECTED);
     } else if (!proposal?.isTallied) {
       setStatus(ProposalStatus.PENDING);
     } else if (totalVotes === 0n) {
-      setStatus(ProposalStatus.FAILED);
+      setStatus(ProposalStatus.REJECTED);
     } else if (quorum && !quorum.reached) {
-      setStatus(ProposalStatus.FAILED);
+      setStatus(ProposalStatus.REJECTED);
     } else if (hasPassed(tally, numOptions) && proposal.actions.length > 0) {
       setStatus(ProposalStatus.EXECUTABLE);
     } else if (hasPassed(tally, numOptions) && proposal.actions.length === 0) {

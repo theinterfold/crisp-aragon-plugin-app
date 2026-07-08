@@ -66,13 +66,13 @@ function getOutcome({ total, winner, resultsWithPercentage, proposalStatus, quor
 
   // Quorum failed: the leading option may have 100% of votes cast, but turnout
   // was too low for the proposal to pass.
-  if (proposalStatus === ProposalStatus.FAILED || (quorum && !quorum.reached)) {
+  if (quorum && !quorum.reached) {
     return winner ? (
       <span style={{ color: "var(--muted-ink, #9a9a9a)" }}>
-        Failed — quorum not reached ({winner.option} led with {winnerPct}% of votes cast)
+        Rejected — quorum not reached ({winner.option} led with {winnerPct}% of votes cast)
       </span>
     ) : (
-      "Failed — quorum not reached"
+      "Rejected — quorum not reached"
     );
   }
 
@@ -161,7 +161,7 @@ export const VoteResultCard = ({
         <div className="vp-head">
           <h3>Result</h3>
           <span className="vp-meta" style={{ color: "var(--critical, #a84932)" }}>
-            Failed
+            Rejected
           </span>
         </div>
         <div className="vp-body items-center text-center">

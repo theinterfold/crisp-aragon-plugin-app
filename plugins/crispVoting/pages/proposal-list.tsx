@@ -29,7 +29,6 @@ const FILTERS: { label: string; value: string }[] = [
   { label: "Accepted", value: ProposalStatus.ACCEPTED },
   { label: "Executable", value: ProposalStatus.EXECUTABLE },
   { label: "Executed", value: ProposalStatus.EXECUTED },
-  { label: "Failed", value: ProposalStatus.FAILED },
   { label: "Rejected", value: ProposalStatus.REJECTED },
 ];
 
