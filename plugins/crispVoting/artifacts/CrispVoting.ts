@@ -1,89 +1,212 @@
 export const CrispVotingAbi = [
-  { type: "constructor", inputs: [], stateMutability: "nonpayable" },
+  {
+    type: "constructor",
+    inputs: [],
+    stateMutability: "nonpayable",
+  },
   {
     type: "function",
     name: "MANAGER_PERMISSION_ID",
     inputs: [],
-    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "SET_TARGET_CONFIG_PERMISSION_ID",
     inputs: [],
-    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "UPGRADE_PLUGIN_PERMISSION_ID",
     inputs: [],
-    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "canExecute",
-    inputs: [{ name: "_proposalId", type: "uint256", internalType: "uint256" }],
-    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    inputs: [
+      {
+        name: "_proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "bool",
+        internalType: "bool",
+      },
+    ],
     stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "claimRefund",
+    inputs: [
+      {
+        name: "_proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [
+      {
+        name: "amount",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "createProposal",
     inputs: [
-      { name: "_metadata", type: "bytes", internalType: "bytes" },
+      {
+        name: "_metadata",
+        type: "bytes",
+        internalType: "bytes",
+      },
       {
         name: "_actions",
         type: "tuple[]",
         internalType: "struct Action[]",
         components: [
-          { name: "to", type: "address", internalType: "address" },
-          { name: "value", type: "uint256", internalType: "uint256" },
-          { name: "data", type: "bytes", internalType: "bytes" },
+          {
+            name: "to",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "value",
+            type: "uint256",
+            internalType: "uint256",
+          },
+          {
+            name: "data",
+            type: "bytes",
+            internalType: "bytes",
+          },
         ],
       },
-      { name: "_startDate", type: "uint64", internalType: "uint64" },
-      { name: "_endDate", type: "uint64", internalType: "uint64" },
-      { name: "_data", type: "bytes", internalType: "bytes" },
+      {
+        name: "_startDate",
+        type: "uint64",
+        internalType: "uint64",
+      },
+      {
+        name: "_endDate",
+        type: "uint64",
+        internalType: "uint64",
+      },
+      {
+        name: "_data",
+        type: "bytes",
+        internalType: "bytes",
+      },
     ],
-    outputs: [{ name: "proposalId", type: "uint256", internalType: "uint256" }],
+    outputs: [
+      {
+        name: "proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "customProposalParamsABI",
     inputs: [],
-    outputs: [{ name: "", type: "string", internalType: "string" }],
+    outputs: [
+      {
+        name: "",
+        type: "string",
+        internalType: "string",
+      },
+    ],
     stateMutability: "pure",
   },
   {
     type: "function",
     name: "dao",
     inputs: [],
-    outputs: [{ name: "", type: "address", internalType: "contract IDAO" }],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "contract IDAO",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
-    name: "enclave",
-    inputs: [],
-    outputs: [{ name: "", type: "address", internalType: "contract IEnclave" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "enclaveFeeToken",
-    inputs: [],
-    outputs: [{ name: "", type: "address", internalType: "contract IERC20" }],
-    stateMutability: "view",
+    name: "deposit",
+    inputs: [
+      {
+        name: "_amount",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "execute",
-    inputs: [{ name: "_proposalId", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "_proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "feeCredits",
+    inputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -95,8 +218,16 @@ export const CrispVotingAbi = [
         type: "tuple",
         internalType: "struct IPlugin.TargetConfig",
         components: [
-          { name: "target", type: "address", internalType: "address" },
-          { name: "operation", type: "uint8", internalType: "enum IPlugin.Operation" },
+          {
+            name: "target",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "operation",
+            type: "uint8",
+            internalType: "enum IPlugin.Operation",
+          },
         ],
       },
     ],
@@ -105,55 +236,127 @@ export const CrispVotingAbi = [
   {
     type: "function",
     name: "getProposal",
-    inputs: [{ name: "_proposalId", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "_proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     outputs: [
       {
         name: "proposal_",
         type: "tuple",
         internalType: "struct ICrispVoting.Proposal",
         components: [
-          { name: "executed", type: "bool", internalType: "bool" },
+          {
+            name: "executed",
+            type: "bool",
+            internalType: "bool",
+          },
           {
             name: "parameters",
             type: "tuple",
             internalType: "struct ICrispVoting.ProposalParameters",
             components: [
-              { name: "numOptions", type: "uint256", internalType: "uint256" },
-              { name: "startDate", type: "uint64", internalType: "uint64" },
-              { name: "endDate", type: "uint64", internalType: "uint64" },
-              { name: "snapshotBlock", type: "uint256", internalType: "uint256" },
-              { name: "minVotingPower", type: "uint256", internalType: "uint256" },
-              { name: "minParticipation", type: "uint256", internalType: "uint256" },
-              { name: "creditMode", type: "uint8", internalType: "enum ICRISP.CreditMode" },
+              {
+                name: "numOptions",
+                type: "uint256",
+                internalType: "uint256",
+              },
+              {
+                name: "startDate",
+                type: "uint64",
+                internalType: "uint64",
+              },
+              {
+                name: "endDate",
+                type: "uint64",
+                internalType: "uint64",
+              },
+              {
+                name: "snapshotBlock",
+                type: "uint256",
+                internalType: "uint256",
+              },
+              {
+                name: "minVotingPower",
+                type: "uint256",
+                internalType: "uint256",
+              },
+              {
+                name: "minParticipation",
+                type: "uint256",
+                internalType: "uint256",
+              },
+              {
+                name: "creditMode",
+                type: "uint8",
+                internalType: "enum ICRISP.CreditMode",
+              },
             ],
           },
           {
             name: "tally",
             type: "tuple",
             internalType: "struct ICrispVoting.TallyResults",
-            components: [{ name: "counts", type: "uint256[]", internalType: "uint256[]" }],
+            components: [
+              {
+                name: "counts",
+                type: "uint256[]",
+                internalType: "uint256[]",
+              },
+            ],
           },
           {
             name: "actions",
             type: "tuple[]",
             internalType: "struct Action[]",
             components: [
-              { name: "to", type: "address", internalType: "address" },
-              { name: "value", type: "uint256", internalType: "uint256" },
-              { name: "data", type: "bytes", internalType: "bytes" },
+              {
+                name: "to",
+                type: "address",
+                internalType: "address",
+              },
+              {
+                name: "value",
+                type: "uint256",
+                internalType: "uint256",
+              },
+              {
+                name: "data",
+                type: "bytes",
+                internalType: "bytes",
+              },
             ],
           },
-          { name: "allowFailureMap", type: "uint256", internalType: "uint256" },
+          {
+            name: "allowFailureMap",
+            type: "uint256",
+            internalType: "uint256",
+          },
           {
             name: "targetConfig",
             type: "tuple",
             internalType: "struct IPlugin.TargetConfig",
             components: [
-              { name: "target", type: "address", internalType: "address" },
-              { name: "operation", type: "uint8", internalType: "enum IPlugin.Operation" },
+              {
+                name: "target",
+                type: "address",
+                internalType: "address",
+              },
+              {
+                name: "operation",
+                type: "uint8",
+                internalType: "enum IPlugin.Operation",
+              },
             ],
           },
-          { name: "e3Id", type: "uint256", internalType: "uint256" },
+          {
+            name: "e3Id",
+            type: "uint256",
+            internalType: "uint256",
+          },
         ],
       },
     ],
@@ -162,13 +365,25 @@ export const CrispVotingAbi = [
   {
     type: "function",
     name: "getTally",
-    inputs: [{ name: "_proposalId", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "_proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     outputs: [
       {
         name: "",
         type: "tuple",
         internalType: "struct ICrispVoting.TallyResults",
-        components: [{ name: "counts", type: "uint256[]", internalType: "uint256[]" }],
+        components: [
+          {
+            name: "counts",
+            type: "uint256[]",
+            internalType: "uint256[]",
+          },
+        ],
       },
     ],
     stateMutability: "view",
@@ -183,8 +398,16 @@ export const CrispVotingAbi = [
         type: "tuple",
         internalType: "struct IPlugin.TargetConfig",
         components: [
-          { name: "target", type: "address", internalType: "address" },
-          { name: "operation", type: "uint8", internalType: "enum IPlugin.Operation" },
+          {
+            name: "target",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "operation",
+            type: "uint8",
+            internalType: "enum IPlugin.Operation",
+          },
         ],
       },
     ],
@@ -194,28 +417,64 @@ export const CrispVotingAbi = [
     type: "function",
     name: "getVotingToken",
     inputs: [],
-    outputs: [{ name: "", type: "address", internalType: "contract IVotesUpgradeable" }],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "contract IVotesUpgradeable",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "getWinningOption",
-    inputs: [{ name: "_proposalId", type: "uint256", internalType: "uint256" }],
-    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "_proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "hasSucceeded",
-    inputs: [{ name: "_proposalId", type: "uint256", internalType: "uint256" }],
-    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    inputs: [
+      {
+        name: "_proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "bool",
+        internalType: "bool",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "implementation",
     inputs: [],
-    outputs: [{ name: "", type: "address", internalType: "address" }],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "address",
+      },
+    ],
     stateMutability: "view",
   },
   {
@@ -227,13 +486,63 @@ export const CrispVotingAbi = [
         type: "tuple",
         internalType: "struct ICrispVoting.PluginInitParams",
         components: [
-          { name: "dao", type: "address", internalType: "contract IDAO" },
-          { name: "token", type: "address", internalType: "address" },
-          { name: "enclave", type: "address", internalType: "address" },
-          { name: "threshold", type: "uint32[2]", internalType: "uint32[2]" },
-          { name: "crispProgramAddress", type: "address", internalType: "address" },
-          { name: "crispProgramParams", type: "bytes", internalType: "bytes" },
-          { name: "computeProviderParams", type: "bytes", internalType: "bytes" },
+          {
+            name: "dao",
+            type: "address",
+            internalType: "contract IDAO",
+          },
+          {
+            name: "token",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "interfold",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "committeeSize",
+            type: "uint8",
+            internalType: "enum IInterfold.CommitteeSize",
+          },
+          {
+            name: "paramSet",
+            type: "uint8",
+            internalType: "uint8",
+          },
+          {
+            name: "crispProgramAddress",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "computeProviderParams",
+            type: "bytes",
+            internalType: "bytes",
+          },
+          {
+            name: "votingSettings",
+            type: "tuple",
+            internalType: "struct ICrispVoting.VotingSettings",
+            components: [
+              {
+                name: "minProposerVotingPower",
+                type: "uint256",
+                internalType: "uint256",
+              },
+              {
+                name: "minParticipation",
+                type: "uint32",
+                internalType: "uint32",
+              },
+              {
+                name: "minDuration",
+                type: "uint64",
+                internalType: "uint64",
+              },
+            ],
+          },
         ],
       },
     ],
@@ -242,51 +551,138 @@ export const CrispVotingAbi = [
   },
   {
     type: "function",
+    name: "interfold",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "contract IInterfold",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "interfoldFeeToken",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "contract IERC20",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "minDuration",
     inputs: [],
-    outputs: [{ name: "", type: "uint64", internalType: "uint64" }],
+    outputs: [
+      {
+        name: "",
+        type: "uint64",
+        internalType: "uint64",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "minParticipation",
     inputs: [],
-    outputs: [{ name: "", type: "uint32", internalType: "uint32" }],
+    outputs: [
+      {
+        name: "",
+        type: "uint32",
+        internalType: "uint32",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "minProposerVotingPower",
     inputs: [],
-    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "pluginType",
     inputs: [],
-    outputs: [{ name: "", type: "uint8", internalType: "enum IPlugin.PluginType" }],
+    outputs: [
+      {
+        name: "",
+        type: "uint8",
+        internalType: "enum IPlugin.PluginType",
+      },
+    ],
     stateMutability: "pure",
   },
   {
     type: "function",
     name: "proposalCount",
     inputs: [],
-    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "proposalPayer",
+    inputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "address",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "protocolVersion",
     inputs: [],
-    outputs: [{ name: "", type: "uint8[3]", internalType: "uint8[3]" }],
+    outputs: [
+      {
+        name: "",
+        type: "uint8[3]",
+        internalType: "uint8[3]",
+      },
+    ],
     stateMutability: "pure",
   },
   {
     type: "function",
     name: "proxiableUUID",
     inputs: [],
-    outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    outputs: [
+      {
+        name: "",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
     stateMutability: "view",
   },
   {
@@ -298,8 +694,16 @@ export const CrispVotingAbi = [
         type: "tuple",
         internalType: "struct IPlugin.TargetConfig",
         components: [
-          { name: "target", type: "address", internalType: "address" },
-          { name: "operation", type: "uint8", internalType: "enum IPlugin.Operation" },
+          {
+            name: "target",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "operation",
+            type: "uint8",
+            internalType: "enum IPlugin.Operation",
+          },
         ],
       },
     ],
@@ -309,21 +713,81 @@ export const CrispVotingAbi = [
   {
     type: "function",
     name: "supportsInterface",
-    inputs: [{ name: "_interfaceId", type: "bytes4", internalType: "bytes4" }],
-    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    inputs: [
+      {
+        name: "_interfaceId",
+        type: "bytes4",
+        internalType: "bytes4",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "bool",
+        internalType: "bool",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "totalVotingPower",
-    inputs: [{ name: "_blockNumber", type: "uint256", internalType: "uint256" }],
-    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "_blockNumber",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     stateMutability: "view",
   },
   {
     type: "function",
+    name: "updateVotingSettings",
+    inputs: [
+      {
+        name: "_votingSettings",
+        type: "tuple",
+        internalType: "struct ICrispVoting.VotingSettings",
+        components: [
+          {
+            name: "minProposerVotingPower",
+            type: "uint256",
+            internalType: "uint256",
+          },
+          {
+            name: "minParticipation",
+            type: "uint32",
+            internalType: "uint32",
+          },
+          {
+            name: "minDuration",
+            type: "uint64",
+            internalType: "uint64",
+          },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "upgradeTo",
-    inputs: [{ name: "newImplementation", type: "address", internalType: "address" }],
+    inputs: [
+      {
+        name: "newImplementation",
+        type: "address",
+        internalType: "address",
+      },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
@@ -331,61 +795,224 @@ export const CrispVotingAbi = [
     type: "function",
     name: "upgradeToAndCall",
     inputs: [
-      { name: "newImplementation", type: "address", internalType: "address" },
-      { name: "data", type: "bytes", internalType: "bytes" },
+      {
+        name: "newImplementation",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "data",
+        type: "bytes",
+        internalType: "bytes",
+      },
     ],
     outputs: [],
     stateMutability: "payable",
   },
   {
+    type: "function",
+    name: "withdraw",
+    inputs: [
+      {
+        name: "_amount",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
     type: "event",
     name: "AdminChanged",
     inputs: [
-      { name: "previousAdmin", type: "address", indexed: false, internalType: "address" },
-      { name: "newAdmin", type: "address", indexed: false, internalType: "address" },
+      {
+        name: "previousAdmin",
+        type: "address",
+        indexed: false,
+        internalType: "address",
+      },
+      {
+        name: "newAdmin",
+        type: "address",
+        indexed: false,
+        internalType: "address",
+      },
     ],
     anonymous: false,
   },
   {
     type: "event",
     name: "BeaconUpgraded",
-    inputs: [{ name: "beacon", type: "address", indexed: true, internalType: "address" }],
+    inputs: [
+      {
+        name: "beacon",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "FeeDeposited",
+    inputs: [
+      {
+        name: "payer",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "amount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "FeeWithdrawn",
+    inputs: [
+      {
+        name: "payer",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "amount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+    ],
     anonymous: false,
   },
   {
     type: "event",
     name: "Initialized",
-    inputs: [{ name: "version", type: "uint8", indexed: false, internalType: "uint8" }],
+    inputs: [
+      {
+        name: "version",
+        type: "uint8",
+        indexed: false,
+        internalType: "uint8",
+      },
+    ],
     anonymous: false,
   },
   {
     type: "event",
     name: "ProposalCreated",
     inputs: [
-      { name: "proposalId", type: "uint256", indexed: true, internalType: "uint256" },
-      { name: "creator", type: "address", indexed: true, internalType: "address" },
-      { name: "startDate", type: "uint64", indexed: false, internalType: "uint64" },
-      { name: "endDate", type: "uint64", indexed: false, internalType: "uint64" },
-      { name: "metadata", type: "bytes", indexed: false, internalType: "bytes" },
+      {
+        name: "proposalId",
+        type: "uint256",
+        indexed: true,
+        internalType: "uint256",
+      },
+      {
+        name: "creator",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "startDate",
+        type: "uint64",
+        indexed: false,
+        internalType: "uint64",
+      },
+      {
+        name: "endDate",
+        type: "uint64",
+        indexed: false,
+        internalType: "uint64",
+      },
+      {
+        name: "metadata",
+        type: "bytes",
+        indexed: false,
+        internalType: "bytes",
+      },
       {
         name: "actions",
         type: "tuple[]",
         indexed: false,
         internalType: "struct Action[]",
         components: [
-          { name: "to", type: "address", internalType: "address" },
-          { name: "value", type: "uint256", internalType: "uint256" },
-          { name: "data", type: "bytes", internalType: "bytes" },
+          {
+            name: "to",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "value",
+            type: "uint256",
+            internalType: "uint256",
+          },
+          {
+            name: "data",
+            type: "bytes",
+            internalType: "bytes",
+          },
         ],
       },
-      { name: "allowFailureMap", type: "uint256", indexed: false, internalType: "uint256" },
+      {
+        name: "allowFailureMap",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
     ],
     anonymous: false,
   },
   {
     type: "event",
     name: "ProposalExecuted",
-    inputs: [{ name: "proposalId", type: "uint256", indexed: true, internalType: "uint256" }],
+    inputs: [
+      {
+        name: "proposalId",
+        type: "uint256",
+        indexed: true,
+        internalType: "uint256",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RefundClaimed",
+    inputs: [
+      {
+        name: "proposalId",
+        type: "uint256",
+        indexed: true,
+        internalType: "uint256",
+      },
+      {
+        name: "e3Id",
+        type: "uint256",
+        indexed: true,
+        internalType: "uint256",
+      },
+      {
+        name: "payer",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "amount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+    ],
     anonymous: false,
   },
   {
@@ -398,8 +1025,16 @@ export const CrispVotingAbi = [
         indexed: false,
         internalType: "struct IPlugin.TargetConfig",
         components: [
-          { name: "target", type: "address", internalType: "address" },
-          { name: "operation", type: "uint8", internalType: "enum IPlugin.Operation" },
+          {
+            name: "target",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "operation",
+            type: "uint8",
+            internalType: "enum IPlugin.Operation",
+          },
         ],
       },
     ],
@@ -408,34 +1043,134 @@ export const CrispVotingAbi = [
   {
     type: "event",
     name: "Upgraded",
-    inputs: [{ name: "implementation", type: "address", indexed: true, internalType: "address" }],
+    inputs: [
+      {
+        name: "implementation",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+    ],
     anonymous: false,
   },
-  { type: "error", name: "AlreadyInitialized", inputs: [] },
+  {
+    type: "event",
+    name: "VotingSettingsUpdated",
+    inputs: [
+      {
+        name: "minProposerVotingPower",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+      {
+        name: "minParticipation",
+        type: "uint32",
+        indexed: false,
+        internalType: "uint32",
+      },
+      {
+        name: "minDuration",
+        type: "uint64",
+        indexed: false,
+        internalType: "uint64",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "error",
+    name: "AlreadyInitialized",
+    inputs: [],
+  },
   {
     type: "error",
     name: "DaoUnauthorized",
     inputs: [
-      { name: "dao", type: "address", internalType: "address" },
-      { name: "where", type: "address", internalType: "address" },
-      { name: "who", type: "address", internalType: "address" },
-      { name: "permissionId", type: "bytes32", internalType: "bytes32" },
+      {
+        name: "dao",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "where",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "who",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "permissionId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
     ],
   },
   {
     type: "error",
     name: "DateOutOfBounds",
     inputs: [
-      { name: "limit", type: "uint64", internalType: "uint64" },
-      { name: "actual", type: "uint64", internalType: "uint64" },
+      {
+        name: "limit",
+        type: "uint64",
+        internalType: "uint64",
+      },
+      {
+        name: "actual",
+        type: "uint64",
+        internalType: "uint64",
+      },
     ],
   },
-  { type: "error", name: "DelegateCallFailed", inputs: [] },
-  { type: "error", name: "FunctionDeprecated", inputs: [] },
+  {
+    type: "error",
+    name: "DelegateCallFailed",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "FunctionDeprecated",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "InsufficientFeeCredit",
+    inputs: [
+      {
+        name: "payer",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "required",
+        type: "uint256",
+        internalType: "uint256",
+      },
+      {
+        name: "available",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+  },
   {
     type: "error",
     name: "InvalidOptionCount",
-    inputs: [{ name: "numOptions", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "numOptions",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+  },
+  {
+    type: "error",
+    name: "InvalidSppMetadata",
+    inputs: [],
   },
   {
     type: "error",
@@ -446,32 +1181,94 @@ export const CrispVotingAbi = [
         type: "tuple",
         internalType: "struct IPlugin.TargetConfig",
         components: [
-          { name: "target", type: "address", internalType: "address" },
-          { name: "operation", type: "uint8", internalType: "enum IPlugin.Operation" },
+          {
+            name: "target",
+            type: "address",
+            internalType: "address",
+          },
+          {
+            name: "operation",
+            type: "uint8",
+            internalType: "enum IPlugin.Operation",
+          },
         ],
       },
     ],
   },
-  { type: "error", name: "NoVotingPower", inputs: [] },
   {
     type: "error",
     name: "NonexistentProposal",
-    inputs: [{ name: "proposalId", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
   },
   {
     type: "error",
     name: "ProposalAlreadyExists",
-    inputs: [{ name: "proposalId", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
   },
   {
     type: "error",
     name: "ProposalCreationForbidden",
-    inputs: [{ name: "_address", type: "address", internalType: "address" }],
+    inputs: [
+      {
+        name: "_address",
+        type: "address",
+        internalType: "address",
+      },
+    ],
   },
   {
     type: "error",
     name: "ProposalExecutionForbidden",
-    inputs: [{ name: "proposalId", type: "uint256", internalType: "uint256" }],
+    inputs: [
+      {
+        name: "proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
   },
-  { type: "error", name: "ZeroAddress", inputs: [] },
+  {
+    type: "error",
+    name: "ProposalNotExecutable",
+    inputs: [
+      {
+        name: "proposalId",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+  },
+  {
+    type: "error",
+    name: "RatioOutOfBounds",
+    inputs: [
+      {
+        name: "limit",
+        type: "uint256",
+        internalType: "uint256",
+      },
+      {
+        name: "actual",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+  },
+  {
+    type: "error",
+    name: "ZeroAddress",
+    inputs: [],
+  },
 ];

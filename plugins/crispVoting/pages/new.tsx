@@ -1,4 +1,5 @@
 import {
+  AlertCard,
   Button,
   IconType,
   InputText,
@@ -26,10 +27,20 @@ import { ProposalActions } from "@/components/proposalActions/proposalActions";
 import { downloadAsFile } from "@/utils/download-as-file";
 import { encodeActionsAsJson } from "@/utils/json-actions";
 import { CreditsMode } from "../utils/types";
+import { FeeEscrowCard } from "../components/fee/feeEscrowCard";
 
 export default function Create() {
   const { address: selfAddress, isConnected } = useAccount();
-  const canCreate = useCanCreateProposal();
+  // NOTE: mirrors the on-chain gate, which reads getVotes() (DELEGATED power), not balanceOf.
+  // The previous hook checked the raw balance, so the button was shown to holders who had never
+  // delegated — they could only ever hit ProposalCreationForbidden.
+  const {
+    canCreate,
+    needsDelegation,
+    hasNoTokens,
+    hasNoFeeToken,
+    isLoading: canCreateLoading,
+  } = useCanCreateProposal();
   const [addActionType, setAddActionType] = useState<NewActionType>("");
   const {
     title,
@@ -424,15 +435,50 @@ export default function Create() {
             onClose={(newActions) => handleNewActionDialogClose(newActions)}
           />
 
+          {/* Fee credit */}
+
+          {isConnected && (
+            <div className="mt-8">
+              <FeeEscrowCard />
+            </div>
+          )}
+
           {/* Submit */}
 
+          {/* Mirror the on-chain preconditions rather than letting the user submit into a
+              revert. Each blocker explains itself and links to the fix. */}
+          {!canCreate && !canCreateLoading && (
+            <AlertCard
+              variant="critical"
+              message="You cannot create a proposal yet"
+              description={
+                !isConnected
+                  ? "Connect your wallet to continue."
+                  : hasNoFeeToken
+                    ? "You have no Interfold fee token and no escrowed fee credit. Creating a proposal pays an E3 fee out of escrowed credit, which is topped up from your balance — use the faucet to get some."
+                    : needsDelegation
+                      ? "You hold enough tokens, but your voting power is 0 because you have never delegated. Token holders have no voting power until they delegate — go to Delegation and delegate to yourself."
+                      : hasNoTokens
+                        ? "You hold none of the voting token, so you have no voting power."
+                        : "Your delegated voting power is below the minimum required to create a proposal."
+              }
+            />
+          )}
+
           <div className="actions-row">
-            <Button isLoading={isCreating} size="lg" variant="primary" onClick={() => submitProposal()}>
-              <If lengthOf={actions} above={0}>
-                <Then>Submit proposal</Then>
-                <Else>Submit signaling proposal</Else>
-              </If>
-            </Button>
+            <If true={canCreate || canCreateLoading}>
+              <Button
+                isLoading={isCreating || canCreateLoading}
+                size="lg"
+                variant="primary"
+                onClick={() => submitProposal()}
+              >
+                <If lengthOf={actions} above={0}>
+                  <Then>Submit proposal</Then>
+                  <Else>Submit signaling proposal</Else>
+                </If>
+              </Button>
+            </If>
             <div className="flex-1" />
             <span className="gas-note">Encrypted on-chain ballot</span>
           </div>

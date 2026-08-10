@@ -2,22 +2,16 @@ import { useRouter } from "next/router";
 import { useState } from "react";
 import type { ProposalMetadata, RawAction } from "@/utils/types";
 import { useAlerts } from "@/context/Alerts";
-import {
-  PUB_APP_NAME,
-  PUB_CHAIN,
-  PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-  PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
-  PUB_PROJECT_URL,
-} from "@/constants";
+import { PUB_APP_NAME, PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_PROJECT_URL } from "@/constants";
 import { uploadToPinata } from "@/utils/ipfs";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
-import { maxUint256 } from "viem";
 import { URL_PATTERN } from "@/utils/input-values";
 import { encodeAbiParameters, parseAbiParameters, toHex } from "viem";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
-import { iVotesAbi } from "../artifacts/iVotes";
-import { usePublicClient } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import { CreditsMode } from "../utils/types";
+import { useFeeEscrow } from "./useFeeEscrow";
+import { readInsufficientFeeCredit } from "../utils/feeCredit";
 
 const UrlRegex = new RegExp(URL_PATTERN);
 
@@ -43,6 +37,7 @@ export function useCreateProposal() {
   const [optionLabels, setOptionLabels] = useState<string[]>(["Yes", "No"]);
 
   const client = usePublicClient();
+  const { address: selfAddress } = useAccount();
 
   const { writeContractAsync: createProposalWrite } = useTransactionManager({
     onSuccessMessage: "Proposal created",
@@ -56,11 +51,7 @@ export function useCreateProposal() {
     onError: () => setIsCreating(false),
   });
 
-  const { writeContractAsync: approveTokens } = useTransactionManager({
-    onSuccessMessage: "Tokens approved",
-    onErrorMessage: "Could not approve tokens to the plugin contract",
-    onError: () => setIsCreating(false),
-  });
+  const { deposit, refetch: refetchEscrow } = useFeeEscrow();
 
   const submitProposal = async () => {
     // Check metadata
@@ -116,27 +107,60 @@ export function useCreateProposal() {
         BigInt(credits),
       ]);
 
-      const tx = await approveTokens({
-        chainId: PUB_CHAIN.id,
-        abi: iVotesAbi,
-        address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
-        functionName: "approve",
-        // for now we just max approve
-        args: [PUB_CRISP_VOTING_PLUGIN_ADDRESS, maxUint256],
-      });
+      // `startDateTime` was computed before the IPFS upload and possible funding transactions,
+      // which together can take longer than the start delay. The contract reverts with
+      // `DateOutOfBounds` if the start is even a second in the past, so re-check it here and
+      // fall back to 0 — which the contract reads as "start at block.timestamp" — rather than
+      // sending a stale timestamp that is guaranteed to revert.
+      const buildArgs = () => {
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const safeStartDateTime = startDateTime <= nowSeconds ? 0 : startDateTime;
+        return [toHex(ipfsPin), actions, safeStartDateTime, endDateTime, data] as const;
+      };
 
-      await client?.waitForTransactionReceipt({ hash: tx });
+      // The plugin debits escrowed credit rather than pulling the fee from the caller, so the
+      // credit has to cover the E3 quote BEFORE the create transaction is sent. The quote is
+      // computed from private plugin storage and cannot be read off-chain, so simulate the real
+      // call and let `InsufficientFeeCredit` tell us the exact shortfall.
+      const shortfall = await client
+        ?.simulateContract({
+          account: selfAddress,
+          abi: CrispVotingAbi,
+          address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+          functionName: "createProposal",
+          args: buildArgs(),
+        })
+        .then(() => undefined)
+        .catch((err) => {
+          const missing = readInsufficientFeeCredit(err);
+          // Any other revert is a real problem with the proposal (bad dates, no voting power,
+          // an Interfold-side failure) — surface it instead of masking it as a funding step.
+          if (!missing) throw err;
+          return missing;
+        });
 
-      // create proposal once we have approved the contract to spend our tokens
+      if (shortfall) {
+        await deposit(shortfall.missing);
+        refetchEscrow();
+      }
+
       await createProposalWrite({
         chainId: PUB_CHAIN.id,
         abi: CrispVotingAbi,
         address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
         functionName: "createProposal",
-        args: [toHex(ipfsPin), actions, startDateTime, endDateTime, data],
+        args: buildArgs(),
       });
     } catch (err) {
       console.error("ERR", err);
+      // `createProposalWrite` and the escrow writes raise their own alerts; a failure here is
+      // most likely the pre-flight simulation, which would otherwise fail silently.
+      if (!(err as { message?: string })?.message?.startsWith("User rejected the request")) {
+        addAlert("Could not create the proposal", {
+          type: "error",
+          description: (err as { shortMessage?: string })?.shortMessage ?? "The proposal would revert on-chain",
+        });
+      }
       setIsCreating(false);
     }
   };
