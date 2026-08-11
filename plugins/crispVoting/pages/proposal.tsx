@@ -29,6 +29,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
     proposal,
     isCommitteeReady,
     e3Failed,
+    e3FailurePending,
     e3FailureReason,
     status: proposalFetchStatus,
   } = useProposal(proposalIdx);
@@ -146,9 +147,10 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
                 creditMode={proposal.parameters.creditMode}
                 e3Failed={e3Failed}
                 e3FailureReason={e3FailureReason}
+                e3FailurePending={e3FailurePending}
               />
             )}
-            {e3Failed && <RefundCard proposalId={proposalIdx} />}
+            {e3Failed && <RefundCard proposalId={proposalIdx} e3Id={proposal.e3Id} />}
             <CardResources resources={proposal.resources} title="Resources" />
           </div>
         </div>

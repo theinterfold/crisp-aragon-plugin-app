@@ -63,14 +63,19 @@ export function useProposal(proposalId: bigint) {
 
   const proposalRaw = proposalResult as Proposal | undefined;
 
-  // Fallback: when the CRISP server can't give us a usable round state (committee
-  // not ready and not tallied), consult the Enclave/Interfold contract for the
-  // authoritative E3 stage — this is how we detect a failed round (e.g. the
-  // committee couldn't be formed or DKG timed out).
-  const { isFailed: e3Failed, failureReason: e3FailureReason } = useE3Status(
-    proposalRaw?.e3Id,
-    !isCommitteeReady && !isTallied
-  );
+  // Interfold is the authority on whether a round failed, so ask it about anything not yet
+  // tallied — not just rounds whose committee never formed.
+  //
+  // Gating on `!isCommitteeReady` (the previous behaviour) meant a round that formed its
+  // committee and then died later was never checked at all: every post-DKG failure reason
+  // (ComputeTimeout, ComputeProviderExpired, ComputeProviderFailed, DecryptionTimeout,
+  // DecryptionInvalidShares, VerificationFailed) landed on a proposal the UI still showed as
+  // healthy. A tallied round is terminal and cannot fail afterwards, so that gate stays.
+  const {
+    isDead: e3Failed,
+    isFailurePending: e3FailurePending,
+    failureReason: e3FailureReason,
+  } = useE3Status(proposalRaw?.e3Id, !isTallied);
 
   const tally: Tally = useMemo(() => {
     if (!tallyResult) return [];
@@ -178,6 +183,7 @@ export function useProposal(proposalId: bigint) {
     isCommitteeReady,
     totalVotingPower,
     e3Failed,
+    e3FailurePending,
     e3FailureReason,
     status: {
       proposalReady: proposalFetchStatus === "idle",

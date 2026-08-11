@@ -33,6 +33,8 @@ interface VoteResultCardProps {
   e3Failed?: boolean;
   /** The on-chain failure reason, when `e3Failed` is set. */
   e3FailureReason?: E3FailureReason;
+  /** The round meets the failure condition but nobody has sent `markE3Failed` yet. */
+  e3FailurePending?: boolean;
 }
 
 // Interfold earth-tone palette — matches the vote card option colors
@@ -101,6 +103,7 @@ export const VoteResultCard = ({
   creditMode,
   e3Failed,
   e3FailureReason,
+  e3FailurePending,
 }: VoteResultCardProps) => {
   const { executeProposal, canExecute, isConfirming: isConfirmingExecution } = useProposalExecute(proposalId);
   const { decimals, symbol } = useToken();
@@ -161,7 +164,7 @@ export const VoteResultCard = ({
         <div className="vp-head">
           <h3>Result</h3>
           <span className="vp-meta" style={{ color: "var(--critical, #a84932)" }}>
-            Rejected
+            Round failed
           </span>
         </div>
         <div className="vp-body items-center text-center">
@@ -175,6 +178,14 @@ export const VoteResultCard = ({
           <p className="vp-note text-center">
             {describeE3Failure(e3FailureReason)} This proposal could not be tallied or executed.
           </p>
+          {/* Interfold does not fail a round by itself — `markE3Failed` is a permissionless call
+              someone has to send once the deadline passes. Until then the round still reads as
+              live on-chain, and the refund cannot be claimed. */}
+          {e3FailurePending && (
+            <p className="vp-note text-center">
+              The failure has not been recorded on-chain yet. Anyone can finalise it, which also unlocks the fee refund.
+            </p>
+          )}
         </div>
       </div>
     );

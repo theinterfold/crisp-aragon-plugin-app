@@ -72,14 +72,17 @@ export const useProposalStatus = (proposal: Proposal, e3Failed = false) => {
           Number(decimals ?? 18)
         );
 
-    if (proposal?.active) {
+    // Checked BEFORE `active`. `active` means only "the end date is in the future", and the
+    // most common failures — committee formation timeout, DKG timeout — happen early, well
+    // inside the voting window. Testing `active` first therefore advertised a dead round as
+    // open for votes until its end date passed, with a vote card people could still click.
+    // A failed round is terminal: it can never be tallied or executed.
+    if (e3Failed) {
+      setStatus(ProposalStatus.REJECTED);
+    } else if (proposal?.active) {
       setStatus(ProposalStatus.ACTIVE);
     } else if (proposal?.executed) {
       setStatus(ProposalStatus.EXECUTED);
-    } else if (e3Failed) {
-      // The encrypted vote round failed on-chain (e.g. committee/DKG failure):
-      // it can never be tallied or executed.
-      setStatus(ProposalStatus.REJECTED);
     } else if (!proposal?.isTallied) {
       setStatus(ProposalStatus.PENDING);
     } else if (totalVotes === 0n) {
