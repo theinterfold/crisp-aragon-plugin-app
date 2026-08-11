@@ -8,6 +8,7 @@ import { iVotesAbi } from "../artifacts/iVotes";
 import { publicClient } from "../utils/client";
 import { useAlerts } from "@/context/Alerts";
 import { usePublishVote } from "./usePublishVote";
+import { useCommitteeKeyCheck } from "./useCommitteeKeyCheck";
 import { crispSdk } from "../utils/crispSdk";
 import { hashMessage } from "viem";
 import { getRandomVoterToMask } from "../utils/voters";
@@ -71,6 +72,8 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     canPublish: canPublishOnChain,
     blockedReason: onChainBlockedReason,
   } = usePublishVote(e3Id);
+
+  const resolveCommitteeKey = useCommitteeKeyCheck(e3Id);
 
   const [votingStep, setVotingStep] = useState<VotingStep>("idle");
   const [lastActiveStep, setLastActiveStep] = useState<VotingStep | null>(null);
@@ -233,14 +236,29 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       });
 
       const roundState = await getRoundState(e3Id);
-      const publicKey = new Uint8Array(roundState.committee_public_key);
 
-      if (publicKey.length === 0 || roundState.status !== "Active") {
-        setError("The committee key has not been published yet. Please wait and try again.");
+      if (roundState.status !== "Active") {
+        setError("This round is not accepting votes yet. Please wait and try again.");
         setVotingStep("error");
-        setStepMessage("The committee key has not been published yet.");
+        setStepMessage("This round is not accepting votes yet.");
         return;
       }
+
+      // The committee key comes from `CommitteePublished` logs, falling back to the CRISP server
+      // only when the key was never published on-chain. Either way it is accepted only if its
+      // recomputed BFV commitment matches the round's on-chain `committeePublicKey`, so nobody —
+      // relayer or log spammer — can substitute a key they hold the secret for and decrypt the
+      // ballot. Resolved BEFORE anything is encrypted to it.
+      const resolved = await resolveCommitteeKey(new Uint8Array(roundState.committee_public_key));
+      if (!resolved.key) {
+        const reason = resolved.reason ?? "The committee public key could not be verified.";
+        setError(reason);
+        setVotingStep("error");
+        setStepMessage(reason);
+        return;
+      }
+
+      const publicKey = resolved.key;
 
       let voteData;
       if (isAMask) {
