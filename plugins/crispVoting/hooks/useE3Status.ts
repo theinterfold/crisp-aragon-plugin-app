@@ -35,6 +35,7 @@ const pluginAbi = parseAbi(["function interfold() view returns (address)"]);
 const interfoldAbi = parseAbi([
   "function getE3Stage(uint256 e3Id) view returns (uint8)",
   "function getFailureReason(uint256 e3Id) view returns (uint8)",
+  "function checkFailureCondition(uint256 e3Id) view returns (bool canFail, uint8 reason)",
 ]);
 
 /** Human-readable description of an E3 failure reason. */
@@ -107,5 +108,34 @@ export function useE3Status(e3Id: bigint | undefined, enabled = true) {
 
   const failureReason = reasonRaw === undefined ? undefined : (Number(reasonRaw) as E3FailureReason);
 
-  return { stage, isFailed, failureReason };
+  // A round does not mark itself failed. `markE3Failed` is a permissionless transaction someone
+  // has to send once a stage deadline passes, so a round whose DKG timed out days ago still reads
+  // as `CommitteeFinalized` until then — alive on-chain, and dead in every way that matters.
+  // `checkFailureCondition` is what Interfold would act on, so it is the honest signal to show.
+  const { data: pending } = useReadContract({
+    chainId: PUB_CHAIN_ID,
+    address: interfold as Address | undefined,
+    abi: interfoldAbi,
+    functionName: "checkFailureCondition",
+    args: [e3Id ?? 0n],
+    query: { enabled: active && !!interfold && !isFailed },
+  });
+
+  const [canFail, pendingReasonRaw] = (pending as readonly [boolean, number] | undefined) ?? [];
+
+  /** Terminal either way: the round can never produce a tally. */
+  const isDead = isFailed || canFail === true;
+
+  return {
+    stage,
+    isFailed,
+    failureReason: isFailed
+      ? failureReason
+      : pendingReasonRaw === undefined
+        ? undefined
+        : (Number(pendingReasonRaw) as E3FailureReason),
+    /** The failure condition is met but nobody has sent `markE3Failed` yet. */
+    isFailurePending: !isFailed && canFail === true,
+    isDead,
+  };
 }

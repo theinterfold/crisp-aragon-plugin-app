@@ -1,37 +1,59 @@
 import { useAccount, usePublicClient, useReadContract } from "wagmi";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { parseAbiItem, type Address } from "viem";
+import { parseAbi, parseAbiItem, type Address } from "viem";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
 import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
 import { isRefundQueryStale } from "../utils/refundQuery";
+import { describeFailure } from "../utils/describeFailure";
+import { E3Stage } from "./useE3Status";
 
 const refundClaimedEvent = parseAbiItem(
   "event RefundClaimed(uint256 indexed proposalId, uint256 indexed e3Id, address indexed payer, uint256 amount)"
 );
 
+const pluginAbi = parseAbi(["function interfold() view returns (address)"]);
+
+const interfoldAbi = parseAbi([
+  "function getE3Stage(uint256 e3Id) view returns (uint8)",
+  "function e3RefundManager() view returns (address)",
+  "function markE3Failed(uint256 e3Id) returns (uint8)",
+  "function processE3Failure(uint256 e3Id)",
+]);
+
+const refundManagerAbi = parseAbi([
+  "struct RefundDistribution { uint256 requesterAmount; uint256 honestNodeAmount; uint256 protocolAmount; uint256 totalSlashed; uint256 honestNodeCount; bool calculated; address feeToken; uint256 originalPayment; uint256 perNodeAmount; }",
+  "function getRefundDistribution(uint256 e3Id) view returns (RefundDistribution)",
+]);
+
 /**
  * Claims the requester refund for a proposal whose E3 failed.
  *
- * `claimRefund` is permissionless on purpose — the refund manager only ever pays the requester
- * (the plugin), and the plugin credits it to the recorded `proposalPayer`, so the caller gains
- * nothing by claiming on someone else's behalf. The UI still surfaces who gets the credit, since
- * the person who paid is not necessarily the person looking at the proposal (under the SPP the
- * payer is the parent proposal's creator).
+ * Claiming is the LAST of three steps, and the first two are what make it work:
  *
- * Whether a refund was already taken has no getter on the plugin — the refund manager owns that
- * state. The `RefundClaimed` event is the durable record, so it is what decides whether to offer
- * the button; local state alone would re-offer an already-spent claim after any page reload, and
- * the second attempt reverts inside the refund manager.
+ *   1. `markE3Failed(e3Id)` moves the round from its stalled stage into `Failed`. Interfold never
+ *      does this itself — it is a permissionless call someone must send once a stage deadline
+ *      passes, so a round whose DKG timed out days ago still reads as live until then.
+ *   2. `processE3Failure(e3Id)` transfers the payment to the refund manager and calculates the
+ *      distribution. Without it `claimRequesterRefund` reverts with `RefundNotCalculated`.
+ *   3. `claimRefund(proposalId)` on the plugin, which credits the recorded `proposalPayer`.
+ *
+ * The plugin's `claimRefund` forwards straight to the refund manager with no preconditions of its
+ * own, so offering step 3 alone reverts on any round that has not been through 1 and 2. This hook
+ * runs whichever steps are still outstanding.
+ *
+ * Step 3 is permissionless by design — the refund manager only ever pays the requester (the
+ * plugin), and the plugin credits the recorded payer — so the caller gains nothing by claiming on
+ * someone else's behalf. Steps 1 and 2 are permissionless in Interfold for the same reason.
  */
-export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
+export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | undefined, enabled = true) {
   const { address } = useAccount();
   const client = usePublicClient();
   const [isClaiming, setIsClaiming] = useState(false);
   const [isClaimed, setIsClaimed] = useState<boolean | undefined>(undefined);
 
-  const active = enabled && proposalId !== undefined;
+  const active = enabled && proposalId !== undefined && e3Id !== undefined;
 
   const { data: payer, refetch: refetchPayer } = useReadContract({
     chainId: PUB_CHAIN.id,
@@ -42,13 +64,61 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
     query: { enabled: active },
   });
 
+  const { data: interfold } = useReadContract({
+    chainId: PUB_CHAIN.id,
+    address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+    abi: pluginAbi,
+    functionName: "interfold",
+    query: { enabled: active },
+  });
+
+  const interfoldAddress = interfold as Address | undefined;
+
+  const { data: stageRaw, refetch: refetchStage } = useReadContract({
+    chainId: PUB_CHAIN.id,
+    address: interfoldAddress,
+    abi: interfoldAbi,
+    functionName: "getE3Stage",
+    args: [e3Id ?? 0n],
+    query: { enabled: active && !!interfoldAddress },
+  });
+
+  const { data: refundManager } = useReadContract({
+    chainId: PUB_CHAIN.id,
+    address: interfoldAddress,
+    abi: interfoldAbi,
+    functionName: "e3RefundManager",
+    query: { enabled: active && !!interfoldAddress },
+  });
+
+  const { data: distribution, refetch: refetchDistribution } = useReadContract({
+    chainId: PUB_CHAIN.id,
+    address: refundManager as Address | undefined,
+    abi: refundManagerAbi,
+    functionName: "getRefundDistribution",
+    args: [e3Id ?? 0n],
+    query: { enabled: active && !!refundManager },
+  });
+
+  const isMarkedFailed = stageRaw !== undefined && Number(stageRaw) === E3Stage.Failed;
+  const isCalculated = (distribution as { calculated?: boolean } | undefined)?.calculated === true;
+  const refundAmount = (distribution as { requesterAmount?: bigint } | undefined)?.requesterAmount;
+
   /**
-   * Identity of the newest status query, and the proposal currently on screen. `isRefundQueryStale`
-   * checks a finished query against both before it is allowed to write state.
+   * Every read `claim()` branches on must have resolved.
    *
-   * Refs rather than a per-call "is this stale?" argument: the argument form defaults to "never
-   * stale", so any caller that forgets to pass one silently loses the guard — which is exactly how
-   * the refresh inside `claim` ended up unprotected.
+   * `isMarkedFailed` and `isCalculated` are false both when the step genuinely has not happened
+   * AND while their read is still in flight — the two are indistinguishable from the flags alone.
+   * Acting on the in-flight case re-sends a step that already completed, which reverts
+   * (`E3AlreadyFailed`) and costs the caller gas for nothing. Checking `interfoldAddress` alone
+   * was not enough: `stageRaw` and `distribution` resolve strictly after it, since their queries
+   * are chained off it.
+   */
+  const isReady = Boolean(interfoldAddress) && stageRaw !== undefined && distribution !== undefined;
+
+  /**
+   * Identity of the newest status query, and the proposal currently on screen.
+   * See `isRefundQueryStale` for why both are checked.
    */
   const latestQuery = useRef(0);
   const activeProposalId = useRef<bigint | undefined>(proposalId);
@@ -56,8 +126,6 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
   const checkClaimed = useCallback(async () => {
     if (!client || proposalId === undefined) return;
 
-    // Captured, not read at completion time: this closure belongs to whichever proposal was
-    // current when it was created, which is not necessarily the one on screen when it finishes.
     const query = { id: ++latestQuery.current, proposalId };
     const isStale = () =>
       isRefundQueryStale(query, { latestId: latestQuery.current, activeProposalId: activeProposalId.current });
@@ -81,9 +149,6 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
   }, [client, proposalId]);
 
   useEffect(() => {
-    // Clear the previous proposal's answer immediately. Without this the card would keep showing
-    // proposal A's "already refunded" state while B's query is still in flight. Moving the active
-    // proposal and bumping the id together retires everything issued for the proposal just left.
     activeProposalId.current = proposalId;
     latestQuery.current += 1;
     setIsClaimed(undefined);
@@ -92,21 +157,75 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
     void checkClaimed();
   }, [active, proposalId, checkClaimed]);
 
-  const { writeContractAsync } = useTransactionManager({
+  const { writeContractAsync: markFailedWrite } = useTransactionManager({
+    onSuccessMessage: "Round marked as failed",
+    onErrorMessage: "Could not mark the round as failed",
+  });
+
+  const { writeContractAsync: processFailureWrite } = useTransactionManager({
+    onSuccessMessage: "Refund calculated",
+    onErrorMessage: "Could not calculate the refund",
+  });
+
+  const { writeContractAsync: claimWrite } = useTransactionManager({
     onSuccessMessage: "Refund claimed",
     onSuccessDescription: "The E3 fee has been credited back to the proposal's fee payer",
     onErrorMessage: "Could not claim the refund",
-    onError: () => setIsClaiming(false),
   });
 
+  /**
+   * Settlement can fail in ways `useTransactionManager` never sees: the preflight throws before
+   * any transaction is sent, and a reverted receipt is caught by `awaitSuccessfulReceipt` rather
+   * than by wagmi (which treats a mined-but-reverted transaction as a successful wait). The card
+   * discards the promise, so anything uncaught here becomes an unhandled rejection and the user
+   * is left staring at a button that did nothing.
+   */
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  // An error belongs to the proposal it happened on. Without this, navigating to another
+  // proposal carries the previous one's failure across and pins it to a round it never affected.
+  useEffect(() => {
+    setError(undefined);
+  }, [proposalId, e3Id]);
+
   const claim = async () => {
-    if (proposalId === undefined) return;
+    if (proposalId === undefined || e3Id === undefined) return;
+    // Belt and braces alongside the disabled button: acting on unresolved reads re-sends a
+    // completed step and burns the caller's gas on a revert.
+    if (!isReady) return;
+
+    setError(undefined);
 
     try {
       setIsClaiming(true);
       if (!client) throw new Error("No RPC client available");
+      if (!interfoldAddress) throw new Error("Interfold address unavailable");
 
-      const hash = await writeContractAsync({
+      if (!isMarkedFailed) {
+        const hash = await markFailedWrite({
+          chainId: PUB_CHAIN.id,
+          abi: interfoldAbi,
+          address: interfoldAddress,
+          functionName: "markE3Failed",
+          args: [e3Id],
+        });
+        await awaitSuccessfulReceipt(client, hash, "Marking the round as failed");
+        await refetchStage();
+      }
+
+      if (!isCalculated) {
+        const hash = await processFailureWrite({
+          chainId: PUB_CHAIN.id,
+          abi: interfoldAbi,
+          address: interfoldAddress,
+          functionName: "processE3Failure",
+          args: [e3Id],
+        });
+        await awaitSuccessfulReceipt(client, hash, "Calculating the refund");
+        await refetchDistribution();
+      }
+
+      const hash = await claimWrite({
         chainId: PUB_CHAIN.id,
         abi: CrispVotingAbi,
         address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
@@ -114,7 +233,14 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
         args: [proposalId],
       });
       await awaitSuccessfulReceipt(client, hash, "The refund claim");
-      await Promise.all([refetchPayer(), checkClaimed()]);
+      await Promise.all([refetchPayer(), refetchDistribution(), checkClaimed()]);
+    } catch (err) {
+      setError(describeFailure(err, "The refund could not be settled"));
+
+      // Settlement is several transactions and an earlier one may have landed before the
+      // failure. Re-read on-chain state so a retry resumes from where it stopped instead of
+      // repeating a step that would now revert.
+      await Promise.all([refetchStage(), refetchDistribution(), checkClaimed()]);
     } finally {
       setIsClaiming(false);
     }
@@ -129,6 +255,18 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
     isSelfPayer: Boolean(address && payerAddress && address.toLowerCase() === payerAddress.toLowerCase()),
     /** True once a `RefundClaimed` event exists for this proposal; undefined while unknown. */
     isClaimed,
+    /** The round is already in the `Failed` stage on-chain. */
+    isMarkedFailed,
+    /** The refund distribution has been calculated, so a claim can settle. */
+    isCalculated,
+    /** How much the requester is owed, once calculated. */
+    refundAmount,
+    /** How many transactions `claim()` will send from the current state. */
+    pendingSteps: (isMarkedFailed ? 0 : 1) + (isCalculated ? 0 : 1) + 1,
+    /** Why the last settlement attempt failed, if it did. */
+    error,
+    /** Every read `claim()` branches on has resolved; see the definition above. */
+    isReady,
     isClaiming,
     claim,
   };

@@ -1,10 +1,11 @@
 import { useAccount, usePublicClient, useReadContracts } from "wagmi";
 import { erc20Abi, type Address } from "viem";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_ENCLAVE_FEE_TOKEN_ADDRESS } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
 import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
+import { describeFailure } from "../utils/describeFailure";
 
 export type FeeEscrow = {
   /** Fee-token credit escrowed in the plugin for this account (`feeCredits`). */
@@ -18,6 +19,8 @@ export type FeeEscrow = {
   isLoading: boolean;
   /** A deposit or withdrawal is in flight. */
   isBusy: boolean;
+  /** Why the last deposit or withdrawal failed, if it did. */
+  error?: string;
   /** Escrows `amount` of the fee token, approving first when the allowance is short. */
   deposit: (amount: bigint) => Promise<void>;
   /** Returns `amount` of unused credit to the wallet. */
@@ -38,6 +41,17 @@ export function useFeeEscrow(): FeeEscrow {
   const { address } = useAccount();
   const client = usePublicClient();
   const [isBusy, setIsBusy] = useState(false);
+  // Both actions can throw where `useTransactionManager` never sees it — the client guard fires
+  // before any transaction is sent, and a reverted receipt is caught by `awaitSuccessfulReceipt`
+  // rather than by wagmi. The card discards these promises, so an uncaught throw is an unhandled
+  // rejection and a button that silently does nothing.
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  // An error belongs to the account that hit it. Switching wallets otherwise carries the previous
+  // account's failure over and shows it against balances it has nothing to do with.
+  useEffect(() => {
+    setError(undefined);
+  }, [address]);
 
   const {
     data,
@@ -110,6 +124,8 @@ export function useFeeEscrow(): FeeEscrow {
   const deposit = async (amount: bigint) => {
     if (amount <= 0n) return;
 
+    setError(undefined);
+
     try {
       setIsBusy(true);
       const publicClient = requireClient();
@@ -124,6 +140,9 @@ export function useFeeEscrow(): FeeEscrow {
       });
       await awaitSuccessfulReceipt(publicClient, hash, "The deposit");
       await refetchReads();
+    } catch (err) {
+      setError(describeFailure(err, "The deposit could not be completed"));
+      await refetchReads();
     } finally {
       setIsBusy(false);
     }
@@ -131,6 +150,8 @@ export function useFeeEscrow(): FeeEscrow {
 
   const withdraw = async (amount: bigint) => {
     if (amount <= 0n) return;
+
+    setError(undefined);
 
     try {
       setIsBusy(true);
@@ -143,6 +164,9 @@ export function useFeeEscrow(): FeeEscrow {
         args: [amount],
       });
       await awaitSuccessfulReceipt(publicClient, hash, "The withdrawal");
+      await refetchReads();
+    } catch (err) {
+      setError(describeFailure(err, "The withdrawal could not be completed"));
       await refetchReads();
     } finally {
       setIsBusy(false);
@@ -191,6 +215,7 @@ export function useFeeEscrow(): FeeEscrow {
     decimals: decimals === undefined ? undefined : Number(decimals),
     isLoading: Boolean(address) && isLoading,
     isBusy,
+    error,
     deposit,
     withdraw,
     refetch: () => void refetchReads(),

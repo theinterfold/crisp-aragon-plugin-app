@@ -71,6 +71,9 @@ export default function ProposalCard(props: ProposalInputs) {
       <div className="body">
         <div className="meta">
           <span className={`badge ${statusClass}`}>{capitalize(proposalStatus)}</span>
+          {/* A failed round and a voted-down proposal both resolve to REJECTED, but they mean
+              very different things — one was decided, the other never got to run. Say which. */}
+          {e3Failed && <span className="badge failed">Round failed</span>}
         </div>
         <h3>{proposal!.title}</h3>
         <p className="summary line-clamp-2">{proposal!.summary}</p>

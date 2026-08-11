@@ -25,7 +25,8 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, 
   const endDateIsInThePast = Number(proposal.parameters.endDate) * 1000 < Date.now();
 
   let endLabel: string;
-  if (proposalStatus === ProposalStatus.ACCEPTED) endLabel = "Accepted";
+  if (e3Failed) endLabel = "Round failed";
+  else if (proposalStatus === ProposalStatus.ACCEPTED) endLabel = "Accepted";
   else if (proposalStatus === ProposalStatus.REJECTED) endLabel = "Rejected";
   else if (endDateIsInThePast) endLabel = "Voting closed";
   else endLabel = `Ends in ${countdown}`;
@@ -45,6 +46,9 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, 
         <div className="flex w-full flex-col">
           <div className="flex flex-wrap items-center gap-3">
             {proposalStatus && <span className={`badge ${statusClass}`}>{capitalizeFirstLetter(proposalStatus)}</span>}
+            {/* "Rejected" on its own reads as "the DAO voted this down". A failed round was never
+                decided at all — the encrypted vote could not complete. */}
+            {e3Failed && <span className="badge failed">Round failed</span>}
             {isEmergency && <span className="badge failed">Emergency</span>}
           </div>
           <h1 className="detail-title">{proposal.title || DEFAULT_PROPOSAL_TITLE}</h1>
