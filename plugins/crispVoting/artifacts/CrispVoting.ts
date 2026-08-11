@@ -687,6 +687,35 @@ export const CrispVotingAbi = [
   },
   {
     type: "function",
+    name: "quoteFee",
+    inputs: [
+      {
+        name: "_startDate",
+        type: "uint64",
+        internalType: "uint64",
+      },
+      {
+        name: "_endDate",
+        type: "uint64",
+        internalType: "uint64",
+      },
+      {
+        name: "_data",
+        type: "bytes",
+        internalType: "bytes",
+      },
+    ],
+    outputs: [
+      {
+        name: "fee",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "setTargetConfig",
     inputs: [
       {

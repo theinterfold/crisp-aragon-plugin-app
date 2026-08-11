@@ -54,6 +54,7 @@ export default function Create() {
     setActions,
     setResources,
     isCreating,
+    feeQuote,
     submitProposal,
     startDate,
     startTime,
@@ -305,7 +306,7 @@ export default function Create() {
                   <InputText
                     label="Credits per Voter"
                     value={credits.toString()}
-                    onChange={(e) => setCredits(Number(e.target.value))}
+                    onChange={(e) => setCredits(Number(e.target.value) || 0)}
                     placeholder="e.g. 100"
                     readOnly={isCreating}
                   />
@@ -324,7 +325,11 @@ export default function Create() {
                   max={10}
                   step={1}
                   onChange={(value) => {
-                    const newNum = Number.parseInt(value, 10) ?? 2;
+                    // Clearing the field yields "", and `parseInt("")` is NaN — which `??` does
+                    // NOT catch. A NaN here poisons the ballot encoding and wipes the labels
+                    // (`slice(0, NaN)` is empty), so fall back to the minimum instead.
+                    const parsed = Number.parseInt(value, 10);
+                    const newNum = Number.isNaN(parsed) ? 2 : parsed;
                     setNumOptions(newNum);
 
                     // Adjust options array based on number
@@ -439,7 +444,7 @@ export default function Create() {
 
           {isConnected && (
             <div className="mt-8">
-              <FeeEscrowCard />
+              <FeeEscrowCard quote={feeQuote} />
             </div>
           )}
 
