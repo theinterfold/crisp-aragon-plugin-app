@@ -8,9 +8,28 @@ import { iVotesAbi } from "../artifacts/iVotes";
 import { publicClient } from "../utils/client";
 import { useAlerts } from "@/context/Alerts";
 import { usePublishVote } from "./usePublishVote";
+import { useCommitteeKeyCheck } from "./useCommitteeKeyCheck";
 import { crispSdk } from "../utils/crispSdk";
 import { hashMessage } from "viem";
 import { getRandomVoterToMask } from "../utils/voters";
+
+/**
+ * Converts the server's `committee_public_key` to bytes, or `undefined` if it is not the byte array
+ * the type claims.
+ *
+ * `getRoundState` only CASTS the parsed JSON, so the declared `number[]` is a promise the server is
+ * not held to. `new Uint8Array("...")` on a string yields an empty array rather than throwing, and
+ * a array of non-numbers yields zeros — either way the caller would go on to treat junk as a key.
+ * Returning `undefined` instead lets the resolver report "no server key" honestly.
+ */
+function toKeyBytes(value: unknown): Uint8Array | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+
+  const valid = value.every((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 255);
+  if (!valid) return undefined;
+
+  return Uint8Array.from(value as number[]);
+}
 
 export const CRISP_SERVER_STATE_LITE_ROUTE = "state/lite";
 export const CRISP_SERVER_STATE_TOKEN_HOLDERS = "state/token-holders";
@@ -71,6 +90,8 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     canPublish: canPublishOnChain,
     blockedReason: onChainBlockedReason,
   } = usePublishVote(e3Id);
+
+  const resolveCommitteeKey = useCommitteeKeyCheck(e3Id);
 
   const [votingStep, setVotingStep] = useState<VotingStep>("idle");
   const [lastActiveStep, setLastActiveStep] = useState<VotingStep | null>(null);
@@ -233,14 +254,42 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       });
 
       const roundState = await getRoundState(e3Id);
-      const publicKey = new Uint8Array(roundState.committee_public_key);
 
-      if (publicKey.length === 0 || roundState.status !== "Active") {
-        setError("The committee key has not been published yet. Please wait and try again.");
+      if (roundState.status !== "Active") {
+        setError("This round is not accepting votes yet. Please wait and try again.");
         setVotingStep("error");
-        setStepMessage("The committee key has not been published yet.");
+        setStepMessage("This round is not accepting votes yet.");
         return;
       }
+
+      // Bail out before signing and proof generation when the chain stage or input window
+      // already blocks on-chain publication. `canPublish` is false while the preconditions are
+      // still being read too, in which case there is no reason to report yet.
+      if (submitOnChain && !canPublishOnChain) {
+        const reason =
+          onChainBlockedReason ??
+          "Still checking whether this round accepts on-chain votes. Please try again in a moment.";
+        setError(reason);
+        setVotingStep("error");
+        setStepMessage(reason);
+        return;
+      }
+
+      // The committee key comes from `CommitteePublished` logs, falling back to the CRISP server
+      // only when the key was never published on-chain. Either way it is accepted only if its
+      // recomputed BFV commitment matches the round's on-chain `committeePublicKey`, so nobody —
+      // relayer or log spammer — can substitute a key they hold the secret for and decrypt the
+      // ballot. Resolved BEFORE anything is encrypted to it.
+      const resolved = await resolveCommitteeKey(toKeyBytes(roundState.committee_public_key));
+      if (!resolved.key) {
+        const reason = resolved.reason ?? "The committee public key could not be verified.";
+        setError(reason);
+        setVotingStep("error");
+        setStepMessage(reason);
+        return;
+      }
+
+      const publicKey = resolved.key;
 
       let voteData;
       if (isAMask) {
