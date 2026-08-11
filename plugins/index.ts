@@ -20,4 +20,13 @@ export const plugins: PluginItem[] = [
     icon: IconType.BLOCKCHAIN_BLOCKCHAIN,
     pluginAddress: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
   },
+  {
+    id: "delegation",
+    folderName: "members",
+    title: "Delegation",
+    icon: IconType.APP_MEMBERS,
+    // Delegation acts on the voting token, not on the plugin, but the menu entry needs an
+    // address: reuse the plugin's so the nav item resolves.
+    pluginAddress: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+  },
 ];

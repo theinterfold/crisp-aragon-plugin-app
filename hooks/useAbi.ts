@@ -4,12 +4,9 @@ import { usePublicClient } from "wagmi";
 import { AbiFunction } from "abitype";
 import { useQuery } from "@tanstack/react-query";
 import { ADDRESS_ZERO, isAddress, isContract } from "@/utils/evm";
-import { PUB_CHAIN, PUB_ETHERSCAN_API_KEY } from "@/constants";
+import { PUB_CHAIN } from "@/constants";
 import { useAlerts } from "@/context/Alerts";
 import { getImplementation } from "@/utils/proxies";
-import { ChainName } from "@/utils/chains";
-
-const CHAIN_NAME = PUB_CHAIN.name.toLowerCase() as ChainName;
 
 export const useAbi = (contractAddress: Address) => {
   const { addAlert } = useAlerts();
@@ -102,39 +99,19 @@ export const useAbi = (contractAddress: Address) => {
 };
 
 function getEtherscanAbiLoader() {
-  switch (CHAIN_NAME) {
-    case "mainnet":
-      return new whatsabi.loaders.EtherscanABILoader({
-        apiKey: PUB_ETHERSCAN_API_KEY,
-      });
-    case "polygon":
-      return new whatsabi.loaders.EtherscanABILoader({
-        apiKey: PUB_ETHERSCAN_API_KEY,
-        baseURL: "https://api.polygonscan.com/api",
-      });
-    case "arbitrum":
-      return new whatsabi.loaders.EtherscanABILoader({
-        apiKey: PUB_ETHERSCAN_API_KEY,
-        baseURL: "https://api.arbiscan.io/api",
-      });
-    case "sepolia":
-      return new whatsabi.loaders.EtherscanABILoader({
-        apiKey: PUB_ETHERSCAN_API_KEY,
-        baseURL: "https://api-sepolia.etherscan.io/api",
-      });
-    case "holesky":
-      return new whatsabi.loaders.EtherscanABILoader({
-        apiKey: PUB_ETHERSCAN_API_KEY,
-        baseURL: "https://api-holesky.etherscan.io/api",
-      });
-    case "mumbai":
-      return new whatsabi.loaders.EtherscanABILoader({
-        apiKey: PUB_ETHERSCAN_API_KEY,
-        baseURL: "https://api-mumbai.polygonscan.com/api",
-      });
-    default:
-      throw new Error("Unknown chain");
-  }
+  // Requests go through our own `/api/etherscan` route, which appends the API key
+  // server-side — the key must never be a NEXT_PUBLIC_* var (inlined into the bundle).
+  //
+  // This also replaces the per-network V1 endpoints (api-sepolia.etherscan.io,
+  // api.polygonscan.com, ...) which Etherscan has sunset. Everything now goes through
+  // the multichain V2 endpoint with a `chainid` param, so there is nothing left to
+  // switch on per chain. whatsabi 0.14 has no chainid config, so it rides in via the
+  // apiKey field (the proxy strips any caller-supplied `apikey`, and query-param order
+  // is irrelevant).
+  return new whatsabi.loaders.EtherscanABILoader({
+    apiKey: `ignored&chainid=${PUB_CHAIN.id}`,
+    baseURL: "/api/etherscan",
+  });
 }
 
 function abiSortCallback(a: AbiFunction, b: AbiFunction) {

@@ -17,6 +17,7 @@ import { useCanVote } from "../hooks/useCanVote";
 import { VoteCard } from "../components/vote/voteCard";
 import { useCrispServer } from "../hooks/useCrispServer";
 import { VoteResultCard } from "../components/vote/voteResultCard";
+import { RefundCard } from "../components/fee/refundCard";
 import { useMemo } from "react";
 
 const ZERO = BigInt(0);
@@ -142,6 +143,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
                 e3FailureReason={e3FailureReason}
               />
             )}
+            {e3Failed && <RefundCard proposalId={proposalIdx} />}
             <CardResources resources={proposal.resources} title="Resources" />
           </div>
         </div>

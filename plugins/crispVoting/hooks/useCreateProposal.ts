@@ -1,23 +1,18 @@
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ProposalMetadata, RawAction } from "@/utils/types";
 import { useAlerts } from "@/context/Alerts";
-import {
-  PUB_APP_NAME,
-  PUB_CHAIN,
-  PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-  PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
-  PUB_PROJECT_URL,
-} from "@/constants";
+import { PUB_APP_NAME, PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_PROJECT_URL } from "@/constants";
 import { uploadToPinata } from "@/utils/ipfs";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
-import { maxUint256 } from "viem";
 import { URL_PATTERN } from "@/utils/input-values";
 import { encodeAbiParameters, parseAbiParameters, toHex } from "viem";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
-import { iVotesAbi } from "../artifacts/iVotes";
-import { usePublicClient } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import { CreditsMode } from "../utils/types";
+import { useFeeEscrow } from "./useFeeEscrow";
+import { readInsufficientFeeCredit } from "../utils/feeCredit";
+import { useProposalFeeQuote } from "./useProposalFeeQuote";
 
 const UrlRegex = new RegExp(URL_PATTERN);
 
@@ -43,6 +38,7 @@ export function useCreateProposal() {
   const [optionLabels, setOptionLabels] = useState<string[]>(["Yes", "No"]);
 
   const client = usePublicClient();
+  const { address: selfAddress } = useAccount();
 
   const { writeContractAsync: createProposalWrite } = useTransactionManager({
     onSuccessMessage: "Proposal created",
@@ -56,11 +52,42 @@ export function useCreateProposal() {
     onError: () => setIsCreating(false),
   });
 
-  const { writeContractAsync: approveTokens } = useTransactionManager({
-    onSuccessMessage: "Tokens approved",
-    onErrorMessage: "Could not approve tokens to the plugin contract",
-    onError: () => setIsCreating(false),
-  });
+  const { deposit, refetch: refetchEscrow } = useFeeEscrow();
+
+  // The dates and ballot encoding are derived here rather than inside `submitProposal` so the fee
+  // quote below is computed from EXACTLY the bytes the transaction will send. A second, separate
+  // encoding for display purposes could quote one price and charge another.
+  const startDateTime = useMemo(
+    () => Math.floor(new Date(`${startDate}T${startTime ? startTime : "00:00:00"}`).getTime() / 1000),
+    [startDate, startTime]
+  );
+
+  const endDateTime = useMemo(
+    () => Math.floor(new Date(`${endDate}T${endTime ? endTime : "00:00:00"}`).getTime() / 1000),
+    [endDate, endTime]
+  );
+
+  // This runs during render, so it must not throw on a half-filled form: an empty number input
+  // gives NaN, and `BigInt(NaN)` is a RangeError that takes the whole page down rather than
+  // failing at submit time. Non-finite values fall back to the contract's own minimums.
+  const data = useMemo(
+    () =>
+      encodeAbiParameters(parseAbiParameters("uint256, uint256, uint256, uint256"), [
+        0n, // allowFailureMap
+        BigInt(Number.isFinite(numOptions) ? Math.trunc(numOptions) : 2),
+        BigInt(Number.isFinite(Number(creditsMode)) ? Math.trunc(Number(creditsMode)) : 0),
+        BigInt(Number.isFinite(credits) ? Math.trunc(credits) : 0),
+      ]),
+    [numOptions, creditsMode, credits]
+  );
+
+  // Quote against the same normalisation `submitProposal` applies, so the figure on screen is the
+  // one the transaction pays. A start date already in the past is sent as 0 ("start now").
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const quotedStartDate = Number.isFinite(startDateTime) && startDateTime > nowSeconds ? startDateTime : 0;
+  const quotedEndDate = Number.isFinite(endDateTime) ? endDateTime : 0;
+
+  const feeQuote = useProposalFeeQuote(quotedStartDate, quotedEndDate, data);
 
   const submitProposal = async () => {
     // Check metadata
@@ -104,44 +131,68 @@ export function useCreateProposal() {
 
       const ipfsPin = await uploadToPinata(JSON.stringify(proposalMetadataJsonObject));
 
-      const startDateTime = Math.floor(new Date(`${startDate}T${startTime ? startTime : "00:00:00"}`).getTime() / 1000);
+      // `startDateTime` was computed before the IPFS upload and possible funding transactions,
+      // which together can take longer than the start delay. The contract reverts with
+      // `DateOutOfBounds` if the start is even a second in the past, so re-check it here and
+      // fall back to 0 — which the contract reads as "start at block.timestamp" — rather than
+      // sending a stale timestamp that is guaranteed to revert.
+      const buildArgs = () => {
+        const now = Math.floor(Date.now() / 1000);
+        const safeStartDateTime = startDateTime <= now ? 0 : startDateTime;
+        return [toHex(ipfsPin), actions, safeStartDateTime, endDateTime, data] as const;
+      };
 
-      const endDateTime = Math.floor(new Date(`${endDate}T${endTime ? endTime : "00:00:00"}`).getTime() / 1000);
+      // The plugin debits escrowed credit rather than pulling the fee from the caller, so the
+      // credit has to cover the E3 quote BEFORE the create transaction is sent. `quoteFee` shows
+      // the price up front and the escrow panel lets the user deposit it, but this stays as a
+      // safety net: an unset start date normalises to `block.timestamp` on-chain, so the window
+      // — and the fee — can move between the quote and this transaction.
+      const shortfall = await client
+        ?.simulateContract({
+          account: selfAddress,
+          abi: CrispVotingAbi,
+          address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+          functionName: "createProposal",
+          args: buildArgs(),
+        })
+        .then(() => undefined)
+        .catch((err) => {
+          const missing = readInsufficientFeeCredit(err);
+          // Any other revert is a real problem with the proposal (bad dates, no voting power,
+          // an Interfold-side failure) — surface it instead of masking it as a funding step.
+          if (!missing) throw err;
+          return missing;
+        });
 
-      const allowFailureMap = 0n;
-      const data = encodeAbiParameters(parseAbiParameters("uint256, uint256, uint256, uint256"), [
-        allowFailureMap,
-        BigInt(numOptions),
-        BigInt(creditsMode.toString()),
-        BigInt(credits),
-      ]);
+      if (shortfall) {
+        await deposit(shortfall.missing);
+        refetchEscrow();
+      }
 
-      const tx = await approveTokens({
-        chainId: PUB_CHAIN.id,
-        abi: iVotesAbi,
-        address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
-        functionName: "approve",
-        // for now we just max approve
-        args: [PUB_CRISP_VOTING_PLUGIN_ADDRESS, maxUint256],
-      });
-
-      await client?.waitForTransactionReceipt({ hash: tx });
-
-      // create proposal once we have approved the contract to spend our tokens
       await createProposalWrite({
         chainId: PUB_CHAIN.id,
         abi: CrispVotingAbi,
         address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
         functionName: "createProposal",
-        args: [toHex(ipfsPin), actions, startDateTime, endDateTime, data],
+        args: buildArgs(),
       });
     } catch (err) {
       console.error("ERR", err);
+      // `createProposalWrite` and the escrow writes raise their own alerts; a failure here is
+      // most likely the pre-flight simulation, which would otherwise fail silently.
+      if (!(err as { message?: string })?.message?.startsWith("User rejected the request")) {
+        addAlert("Could not create the proposal", {
+          type: "error",
+          description: (err as { shortMessage?: string })?.shortMessage ?? "The proposal would revert on-chain",
+        });
+      }
       setIsCreating(false);
     }
   };
 
   return {
+    /** The E3 fee this proposal will cost, quoted from the current form values. */
+    feeQuote,
     isCreating,
     title,
     summary,

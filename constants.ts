@@ -23,15 +23,18 @@ export const PUB_CHAIN_ID = PUB_CHAIN.id;
 // Network and services
 export const PUB_WEB3_ENDPOINT = process.env.NEXT_PUBLIC_WEB3_ENDPOINT ?? "";
 
-export const PUB_ETHERSCAN_API_KEY = process.env.NEXT_PUBLIC_ETHERSCAN_API_KEY ?? "";
-
 export const PUB_WALLET_CONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID ?? "";
 
 export const PUB_IPFS_ENDPOINTS = process.env.NEXT_PUBLIC_IPFS_ENDPOINTS ?? "";
-export const PUB_PINATA_JWT = process.env.NEXT_PUBLIC_PINATA_JWT ?? "";
 
 // General
 export const PUB_DEPLOYMENT_BLOCK = Number(process.env.NEXT_PUBLIC_PLUGIN_DEPLOYMENT_BLOCK ?? 0);
+
+// The voting token is usually deployed BEFORE the plugin (and may be shared by several
+// plugins), so delegate log scans must start here, not at the plugin block.
+export const PUB_TOKEN_DEPLOYMENT_BLOCK = Number(
+  process.env.NEXT_PUBLIC_TOKEN_DEPLOYMENT_BLOCK ?? process.env.NEXT_PUBLIC_PLUGIN_DEPLOYMENT_BLOCK ?? 0
+);
 export const PUB_APP_NAME = "The Interfold";
 export const PUB_APP_DESCRIPTION = "DAO Voting using CRISP";
 export const PUB_TOKEN_SYMBOL = "DVT";
