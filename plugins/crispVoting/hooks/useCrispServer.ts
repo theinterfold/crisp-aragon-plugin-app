@@ -262,6 +262,15 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
         return;
       }
 
+      // Bail out before signing and proof generation when the chain stage or input window
+      // already blocks on-chain publication.
+      if (submitOnChain && onChainBlockedReason) {
+        setError(onChainBlockedReason);
+        setVotingStep("error");
+        setStepMessage(onChainBlockedReason);
+        return;
+      }
+
       // The committee key comes from `CommitteePublished` logs, falling back to the CRISP server
       // only when the key was never published on-chain. Either way it is accepted only if its
       // recomputed BFV commitment matches the round's on-chain `committeePublicKey`, so nobody —
