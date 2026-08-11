@@ -1,5 +1,5 @@
 import { useAccount, usePublicClient, useReadContract } from "wagmi";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { parseAbiItem, type Address } from "viem";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
@@ -42,47 +42,49 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
   });
 
   /**
-   * @param isStale Reports whether this query has been superseded. A `getLogs` for proposal A can
-   * land after the hook has moved to proposal B, and writing its result then would show B the
-   * wrong action — so a superseded query discards its result instead of applying it.
+   * Monotonic id for the newest status query. Every `checkClaimed` call claims one and only writes
+   * state if it still holds it — so a `getLogs` for proposal A that lands after the hook moved to
+   * proposal B is discarded rather than shown as B's answer.
+   *
+   * A ref rather than a per-call "is this stale?" argument: the argument form defaults to "never
+   * stale", so any caller that forgets to pass one silently loses the guard — which is exactly how
+   * the refresh inside `claim` ended up unprotected.
    */
-  const checkClaimed = useCallback(
-    async (isStale: () => boolean = () => false) => {
-      if (!client || proposalId === undefined) return;
+  const latestQuery = useRef(0);
 
-      try {
-        const logs = await client.getLogs({
-          address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-          event: refundClaimedEvent,
-          args: { proposalId },
-          fromBlock: BigInt(PUB_DEPLOYMENT_BLOCK),
-          toBlock: "latest",
-        });
-        if (isStale()) return;
-        setIsClaimed(logs.length > 0);
-      } catch {
-        // Leave `isClaimed` undefined: the card treats "unknown" as claimable rather than hiding a
-        // legitimate refund because a log query failed.
-        if (isStale()) return;
-        setIsClaimed(undefined);
-      }
-    },
-    [client, proposalId]
-  );
+  const checkClaimed = useCallback(async () => {
+    if (!client || proposalId === undefined) return;
+
+    const query = ++latestQuery.current;
+    const isStale = () => latestQuery.current !== query;
+
+    try {
+      const logs = await client.getLogs({
+        address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+        event: refundClaimedEvent,
+        args: { proposalId },
+        fromBlock: BigInt(PUB_DEPLOYMENT_BLOCK),
+        toBlock: "latest",
+      });
+      if (isStale()) return;
+      setIsClaimed(logs.length > 0);
+    } catch {
+      // Leave `isClaimed` undefined: the card treats "unknown" as claimable rather than hiding a
+      // legitimate refund because a log query failed.
+      if (isStale()) return;
+      setIsClaimed(undefined);
+    }
+  }, [client, proposalId]);
 
   useEffect(() => {
     // Clear the previous proposal's answer immediately. Without this the card would keep showing
-    // proposal A's "already refunded" state while B's query is still in flight.
+    // proposal A's "already refunded" state while B's query is still in flight. Bumping the id
+    // also retires any in-flight query from the proposal we just left.
+    latestQuery.current += 1;
     setIsClaimed(undefined);
 
     if (!active) return;
-
-    let cancelled = false;
-    void checkClaimed(() => cancelled);
-
-    return () => {
-      cancelled = true;
-    };
+    void checkClaimed();
   }, [active, checkClaimed]);
 
   const { writeContractAsync } = useTransactionManager({

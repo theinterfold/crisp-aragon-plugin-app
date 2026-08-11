@@ -54,6 +54,10 @@ export function useDelegates() {
         }
 
         const latest = await publicClient.getBlockNumber();
+        // The effect can be torn down while this await is pending. Everything past here writes
+        // state, so a superseded run must stop before it overwrites the newer one's results.
+        if (cancelled) return;
+
         const start = BigInt(PUB_TOKEN_DEPLOYMENT_BLOCK);
 
         // A deployment block past the chain head skips the loop entirely and renders an empty
