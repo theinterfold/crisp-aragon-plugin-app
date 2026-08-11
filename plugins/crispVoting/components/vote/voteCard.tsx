@@ -19,6 +19,13 @@ export interface VoteCardProps {
   isCommitteeReady: boolean;
   txHash: string | null;
   onClickVote: (voteOption: number) => void;
+  /** The round accepts a direct on-chain vote right now. */
+  canPublishOnChain?: boolean;
+  /** Why the on-chain route is unavailable, when it is. */
+  onChainBlockedReason?: string;
+  /** Submit the ballot yourself rather than via the CRISP server. */
+  submitOnChain?: boolean;
+  onChangeSubmitOnChain?: (value: boolean) => void;
   onClickMask: () => void;
 }
 
@@ -36,6 +43,10 @@ export const VoteCard = ({
   disabled,
   isLoading,
   onClickVote,
+  canPublishOnChain,
+  onChainBlockedReason,
+  submitOnChain = false,
+  onChangeSubmitOnChain,
   onClickMask,
   votingStep,
   lastActiveStep,
@@ -123,6 +134,27 @@ export const VoteCard = ({
             );
           })}
         </div>
+
+        {/* Submission route. The ballot is encrypted and proven locally either way — this only
+            decides who sends the transaction, the voter or the CRISP server acting as relayer. */}
+        {onChangeSubmitOnChain && (
+          <div className="flex flex-col gap-y-1 pt-2">
+            <label className="flex items-center gap-x-2 text-sm text-neutral-600">
+              <input
+                type="checkbox"
+                checked={submitOnChain}
+                disabled={isDisabled || !canPublishOnChain}
+                onChange={(e) => onChangeSubmitOnChain(e.target.checked)}
+              />
+              Submit on-chain myself (you pay gas)
+            </label>
+            <p className="text-xs text-neutral-500">
+              {canPublishOnChain === false && onChainBlockedReason
+                ? onChainBlockedReason
+                : "Bypasses the CRISP server. Your ballot stays encrypted either way; this only changes who sends the transaction."}
+            </p>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="vp-cta">

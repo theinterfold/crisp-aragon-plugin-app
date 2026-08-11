@@ -18,13 +18,13 @@ import { VoteCard } from "../components/vote/voteCard";
 import { useCrispServer } from "../hooks/useCrispServer";
 import { VoteResultCard } from "../components/vote/voteResultCard";
 import { RefundCard } from "../components/fee/refundCard";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 const ZERO = BigInt(0);
 
 export default function ProposalDetail({ index: proposalIdx }: { index: bigint }) {
   const { address } = useAccount();
-  const { isLoading, error, postVote, votingStep, lastActiveStep, stepMessage, txHash } = useCrispServer();
+  const [submitOnChain, setSubmitOnChain] = useState(false);
   const {
     proposal,
     isCommitteeReady,
@@ -33,6 +33,17 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
     e3FailureReason,
     status: proposalFetchStatus,
   } = useProposal(proposalIdx);
+  const {
+    isLoading,
+    error,
+    postVote,
+    votingStep,
+    lastActiveStep,
+    stepMessage,
+    txHash,
+    canPublishOnChain,
+    onChainBlockedReason,
+  } = useCrispServer(proposal?.e3Id);
   // Eligibility is the token's delegated power at the proposal's snapshot, not a plugin call.
   const canVote = useCanVote(proposal?.parameters.snapshotBlock);
   const { balance, delegatesTo } = useTokenVotes(address);
@@ -58,13 +69,13 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
       return;
     }
 
-    postVote(BigInt(optionIndex), proposal.e3Id, proposal.parameters.snapshotBlock);
+    postVote(BigInt(optionIndex), proposal.e3Id, proposal.parameters.snapshotBlock, false, submitOnChain);
   };
 
   const onMask = () => {
     if (!proposal) return;
     // Mask uses the next index after the last option
-    postVote(BigInt(options.length), proposal.e3Id, proposal.parameters.snapshotBlock, true);
+    postVote(BigInt(options.length), proposal.e3Id, proposal.parameters.snapshotBlock, true, submitOnChain);
   };
 
   const hasBalance = !!balance && balance > ZERO;
@@ -118,6 +129,10 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
                 }
                 isLoading={isLoading}
                 onClickVote={onVote}
+                canPublishOnChain={canPublishOnChain}
+                onChainBlockedReason={onChainBlockedReason}
+                submitOnChain={submitOnChain}
+                onChangeSubmitOnChain={setSubmitOnChain}
                 onClickMask={onMask}
                 proposalId={proposalIdx}
                 votingStep={votingStep}
