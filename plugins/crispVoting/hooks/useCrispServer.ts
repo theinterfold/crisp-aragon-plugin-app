@@ -263,11 +263,15 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       }
 
       // Bail out before signing and proof generation when the chain stage or input window
-      // already blocks on-chain publication.
-      if (submitOnChain && onChainBlockedReason) {
-        setError(onChainBlockedReason);
+      // already blocks on-chain publication. `canPublish` is false while the preconditions are
+      // still being read too, in which case there is no reason to report yet.
+      if (submitOnChain && !canPublishOnChain) {
+        const reason =
+          onChainBlockedReason ??
+          "Still checking whether this round accepts on-chain votes. Please try again in a moment.";
+        setError(reason);
         setVotingStep("error");
-        setStepMessage(onChainBlockedReason);
+        setStepMessage(reason);
         return;
       }
 
