@@ -1,5 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { whatsabi } from "@shazow/whatsabi";
+import { buildEtherscanUpstreamQuery, type IncomingQuery } from "../utils/etherscan-query";
 
 /**
  * Guards the chainid smuggling in `getEtherscanAbiLoader` (hooks/useAbi.ts).
@@ -43,16 +44,17 @@ async function captureLoaderQuery(apiKey: string): Promise<URLSearchParams> {
   return new URL(captured, "http://localhost").searchParams;
 }
 
-/** What `pages/api/etherscan.ts` forwards upstream, given the caller's query. */
-function proxyForward(incoming: URLSearchParams, serverKey: string): URLSearchParams {
-  const out = new URLSearchParams();
-  for (const [key, value] of incoming.entries()) {
-    if (key === "apikey") continue;
-    out.set(key, value);
-  }
-  out.set("apikey", serverKey);
-  return out;
+/**
+ * Adapts a query string into the `req.query` shape Next hands the route, so the tests can drive
+ * the REAL forwarding helper rather than a copy of it — a duplicate would keep passing while the
+ * route it is supposed to guard broke.
+ */
+function asIncomingQuery(params: URLSearchParams): IncomingQuery {
+  return Object.fromEntries(params.entries());
 }
+
+const proxyForward = (params: URLSearchParams, serverKey: string) =>
+  buildEtherscanUpstreamQuery(asIncomingQuery(params), serverKey);
 
 describe("Etherscan proxy query", () => {
   test("whatsabi splits the smuggled chainid into its own query parameter", async () => {

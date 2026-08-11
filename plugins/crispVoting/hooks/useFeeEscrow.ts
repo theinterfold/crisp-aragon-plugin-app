@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_ENCLAVE_FEE_TOKEN_ADDRESS } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
+import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
 
 export type FeeEscrow = {
   /** Fee-token credit escrowed in the plugin for this account (`feeCredits`). */
@@ -121,7 +122,7 @@ export function useFeeEscrow(): FeeEscrow {
         functionName: "deposit",
         args: [amount],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await awaitSuccessfulReceipt(publicClient, hash, "The deposit");
       await refetchReads();
     } finally {
       setIsBusy(false);
@@ -141,7 +142,7 @@ export function useFeeEscrow(): FeeEscrow {
         functionName: "withdraw",
         args: [amount],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await awaitSuccessfulReceipt(publicClient, hash, "The withdrawal");
       await refetchReads();
     } finally {
       setIsBusy(false);
@@ -176,7 +177,8 @@ export function useFeeEscrow(): FeeEscrow {
       functionName: "approve",
       args: [PUB_CRISP_VOTING_PLUGIN_ADDRESS, amount],
     });
-    await publicClient.waitForTransactionReceipt({ hash });
+    // A reverted approval must stop the flow: the deposit that follows would fail anyway.
+    await awaitSuccessfulReceipt(publicClient, hash, "The fee-token approval");
   };
 
   const decimals = data?.[4]?.result as number | undefined;

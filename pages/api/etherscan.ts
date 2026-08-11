@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { buildEtherscanUpstreamQuery } from "@/utils/etherscan-query";
 
 /**
  * Server-side Etherscan V2 proxy.
@@ -41,11 +42,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const url = new URL(ETHERSCAN_V2);
-  for (const [key, value] of Object.entries(req.query)) {
-    if (key === "apikey") continue; // never let a caller override the server key
-    url.searchParams.set(key, Array.isArray(value) ? (value[0] ?? "") : String(value ?? ""));
+  for (const [key, value] of buildEtherscanUpstreamQuery(req.query, ETHERSCAN_API_KEY)) {
+    url.searchParams.set(key, value);
   }
-  url.searchParams.set("apikey", ETHERSCAN_API_KEY);
 
   // Bound the upstream call. Without a deadline a stalled Etherscan response holds this function
   // open until the platform's own, much longer, timeout — and enough concurrent stalls exhaust the
@@ -60,13 +59,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     const body = await upstream.text();
 
+    res.setHeader("Content-Type", "application/json");
+
+    if (!upstream.ok) {
+      // Never cache a failure. The 502 below is OUR translation of an upstream error, and a shared
+      // cache holding it for an hour would keep serving the failure long after Etherscan recovered.
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(502).send(body);
+    }
+
     // ABIs are immutable for a given address; let the CDN absorb repeat lookups.
     res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
-    res.setHeader("Content-Type", "application/json");
-    return res.status(upstream.ok ? 200 : 502).send(body);
+    return res.status(200).send(body);
   } catch (err) {
     const timedOut = (err as { name?: string })?.name === "AbortError";
     console.error("Etherscan proxy failed", timedOut ? `timed out after ${UPSTREAM_TIMEOUT_MS}ms` : err);
+    // Same reasoning as the non-OK branch: a transient timeout must not be cached.
+    res.setHeader("Cache-Control", "no-store");
     return res.status(timedOut ? 504 : 502).json({
       status: "0",
       message: "NOTOK",

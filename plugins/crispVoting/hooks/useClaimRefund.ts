@@ -4,6 +4,7 @@ import { parseAbiItem, type Address } from "viem";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
+import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
 
 const refundClaimedEvent = parseAbiItem(
   "event RefundClaimed(uint256 indexed proposalId, uint256 indexed e3Id, address indexed payer, uint256 amount)"
@@ -40,28 +41,48 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
     query: { enabled: active },
   });
 
-  const checkClaimed = useCallback(async () => {
-    if (!client || proposalId === undefined) return;
+  /**
+   * @param isStale Reports whether this query has been superseded. A `getLogs` for proposal A can
+   * land after the hook has moved to proposal B, and writing its result then would show B the
+   * wrong action — so a superseded query discards its result instead of applying it.
+   */
+  const checkClaimed = useCallback(
+    async (isStale: () => boolean = () => false) => {
+      if (!client || proposalId === undefined) return;
 
-    try {
-      const logs = await client.getLogs({
-        address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-        event: refundClaimedEvent,
-        args: { proposalId },
-        fromBlock: BigInt(PUB_DEPLOYMENT_BLOCK),
-        toBlock: "latest",
-      });
-      setIsClaimed(logs.length > 0);
-    } catch {
-      // Leave `isClaimed` undefined: the card treats "unknown" as claimable rather than hiding a
-      // legitimate refund because a log query failed.
-      setIsClaimed(undefined);
-    }
-  }, [client, proposalId]);
+      try {
+        const logs = await client.getLogs({
+          address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+          event: refundClaimedEvent,
+          args: { proposalId },
+          fromBlock: BigInt(PUB_DEPLOYMENT_BLOCK),
+          toBlock: "latest",
+        });
+        if (isStale()) return;
+        setIsClaimed(logs.length > 0);
+      } catch {
+        // Leave `isClaimed` undefined: the card treats "unknown" as claimable rather than hiding a
+        // legitimate refund because a log query failed.
+        if (isStale()) return;
+        setIsClaimed(undefined);
+      }
+    },
+    [client, proposalId]
+  );
 
   useEffect(() => {
+    // Clear the previous proposal's answer immediately. Without this the card would keep showing
+    // proposal A's "already refunded" state while B's query is still in flight.
+    setIsClaimed(undefined);
+
     if (!active) return;
-    void checkClaimed();
+
+    let cancelled = false;
+    void checkClaimed(() => cancelled);
+
+    return () => {
+      cancelled = true;
+    };
   }, [active, checkClaimed]);
 
   const { writeContractAsync } = useTransactionManager({
@@ -85,7 +106,7 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
         functionName: "claimRefund",
         args: [proposalId],
       });
-      await client.waitForTransactionReceipt({ hash });
+      await awaitSuccessfulReceipt(client, hash, "The refund claim");
       await Promise.all([refetchPayer(), checkClaimed()]);
     } finally {
       setIsClaiming(false);
