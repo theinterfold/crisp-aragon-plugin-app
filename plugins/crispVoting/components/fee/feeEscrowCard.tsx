@@ -22,7 +22,7 @@ function formatAmount(value: bigint, decimals: number): string {
  * button carries the precise shortfall and the withdraw button returns the whole remaining credit.
  */
 export const FeeEscrowCard = ({ quote }: { quote?: ProposalFeeQuote }) => {
-  const { credit, balance, symbol, decimals, isLoading, isBusy, deposit, withdraw, refetch } = useFeeEscrow();
+  const { credit, balance, symbol, decimals, isLoading, isBusy, error, deposit, withdraw, refetch } = useFeeEscrow();
 
   if (isLoading) {
     return <PleaseWaitSpinner fullMessage="Loading the fee credit" />;
@@ -111,6 +111,11 @@ export const FeeEscrowCard = ({ quote }: { quote?: ProposalFeeQuote }) => {
           description="No deposit needed — creating the proposal will debit the fee from your credit."
         />
       )}
+
+      {/* Deposits and withdrawals can fail where the transaction manager never sees it — the
+          client guard throws before anything is sent, and a reverted receipt is caught by
+          `awaitSuccessfulReceipt` rather than by wagmi. */}
+      {error && <AlertCard variant="critical" message="Transaction failed" description={error} />}
 
       <div className="flex flex-wrap gap-3">
         {/* The exact shortfall, not the full fee: credit left over from an earlier proposal or

@@ -25,8 +25,19 @@ const Step = ({ done, children }: { done: boolean; children: React.ReactNode }) 
 );
 
 export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: bigint }) => {
-  const { payer, isSelfPayer, isClaimed, isMarkedFailed, isCalculated, refundAmount, pendingSteps, isClaiming, claim } =
-    useClaimRefund(proposalId, e3Id);
+  const {
+    payer,
+    isSelfPayer,
+    isClaimed,
+    isMarkedFailed,
+    isCalculated,
+    refundAmount,
+    pendingSteps,
+    error,
+    isReady,
+    isClaiming,
+    claim,
+  } = useClaimRefund(proposalId, e3Id);
   const { symbol, decimals } = useFeeEscrow();
 
   // A second claim reverts inside the refund manager, so once the on-chain `RefundClaimed` event
@@ -83,8 +94,24 @@ export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: big
           : "Requires one transaction."}
       </p>
 
+      {/* Settlement failures surface here rather than only in the console: several of them
+          (preflight, reverted receipt) never reach the transaction manager's alerts. */}
+      {error && (
+        <AlertCard
+          variant="critical"
+          message="Could not settle the refund"
+          description={`${error} Any steps that already completed are kept — retrying resumes from there.`}
+        />
+      )}
+
       <div>
-        <Button size="md" variant="secondary" isLoading={isClaiming} disabled={isClaiming} onClick={() => void claim()}>
+        <Button
+          size="md"
+          variant="secondary"
+          isLoading={isClaiming}
+          disabled={isClaiming || !isReady}
+          onClick={() => void claim()}
+        >
           {isMarkedFailed ? "Settle refund" : "Mark failed and refund"}
         </Button>
       </div>

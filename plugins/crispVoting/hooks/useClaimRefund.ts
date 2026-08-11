@@ -6,6 +6,7 @@ import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from
 import { useTransactionManager } from "@/hooks/useTransactionManager";
 import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
 import { isRefundQueryStale } from "../utils/refundQuery";
+import { describeFailure } from "../utils/describeFailure";
 import { E3Stage } from "./useE3Status";
 
 const refundClaimedEvent = parseAbiItem(
@@ -160,8 +161,19 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
     onErrorMessage: "Could not claim the refund",
   });
 
+  /**
+   * Settlement can fail in ways `useTransactionManager` never sees: the preflight throws before
+   * any transaction is sent, and a reverted receipt is caught by `awaitSuccessfulReceipt` rather
+   * than by wagmi (which treats a mined-but-reverted transaction as a successful wait). The card
+   * discards the promise, so anything uncaught here becomes an unhandled rejection and the user
+   * is left staring at a button that did nothing.
+   */
+  const [error, setError] = useState<string | undefined>(undefined);
+
   const claim = async () => {
     if (proposalId === undefined || e3Id === undefined) return;
+
+    setError(undefined);
 
     try {
       setIsClaiming(true);
@@ -201,6 +213,13 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
       });
       await awaitSuccessfulReceipt(client, hash, "The refund claim");
       await Promise.all([refetchPayer(), refetchDistribution(), checkClaimed()]);
+    } catch (err) {
+      setError(describeFailure(err, "The refund could not be settled"));
+
+      // Settlement is several transactions and an earlier one may have landed before the
+      // failure. Re-read on-chain state so a retry resumes from where it stopped instead of
+      // repeating a step that would now revert.
+      await Promise.all([refetchStage(), refetchDistribution(), checkClaimed()]);
     } finally {
       setIsClaiming(false);
     }
@@ -223,6 +242,13 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
     refundAmount,
     /** How many transactions `claim()` will send from the current state. */
     pendingSteps: (isMarkedFailed ? 0 : 1) + (isCalculated ? 0 : 1) + 1,
+    /** Why the last settlement attempt failed, if it did. */
+    error,
+    /**
+     * The addresses `claim()` needs are loaded. Without this the button is clickable before the
+     * `interfold` read resolves, and settlement throws before sending anything.
+     */
+    isReady: Boolean(interfoldAddress),
     isClaiming,
     claim,
   };
