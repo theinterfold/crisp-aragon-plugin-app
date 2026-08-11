@@ -22,12 +22,31 @@ function formatAmount(value: bigint, decimals: number): string {
  * button carries the precise shortfall and the withdraw button returns the whole remaining credit.
  */
 export const FeeEscrowCard = ({ quote }: { quote?: ProposalFeeQuote }) => {
-  const { credit, balance, symbol, decimals, isLoading, isBusy, deposit, withdraw } = useFeeEscrow();
+  const { credit, balance, symbol, decimals, isLoading, isBusy, deposit, withdraw, refetch } = useFeeEscrow();
 
-  // Never guess decimals: the fee token is configurable and a wrong exponent would move the
-  // wrong amount by orders of magnitude.
-  if (isLoading || decimals === undefined) {
+  if (isLoading) {
     return <PleaseWaitSpinner fullMessage="Loading the fee credit" />;
+  }
+
+  // Never guess decimals: the fee token is configurable and a wrong exponent would move the wrong
+  // amount by orders of magnitude. But a failed `decimals` read leaves `isLoading` false and
+  // `decimals` undefined, so gating the spinner on both would spin forever with no way out — say
+  // what went wrong and offer a retry instead.
+  if (decimals === undefined) {
+    return (
+      <div className="flex w-full flex-col gap-y-3 rounded-xl border border-neutral-100 bg-neutral-0 p-6 shadow-neutral-sm">
+        <AlertCard
+          variant="critical"
+          message="Could not read the fee token"
+          description="The fee token's decimals could not be loaded, so amounts cannot be shown safely. Check your network connection and the configured fee token address."
+        />
+        <div>
+          <Button size="md" variant="tertiary" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const ticker = symbol ?? "tokens";
@@ -80,7 +99,7 @@ export const FeeEscrowCard = ({ quote }: { quote?: ProposalFeeQuote }) => {
       {shortOnBalance && (
         <AlertCard
           variant="critical"
-          message={`You need ${formatAmount(shortfall, decimals)} ${ticker} but hold ${formatAmount(balance ?? 0n, decimals)}`}
+          message={`You need ${formatAmount(shortfall, decimals)} ${ticker} but hold ${formatAmount(balance ?? 0n, decimals)} ${ticker}`}
           description="Use the faucet to get more of the fee token before creating this proposal."
         />
       )}

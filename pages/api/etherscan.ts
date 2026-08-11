@@ -14,6 +14,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY ?? "";
 const ETHERSCAN_V2 = "https://api.etherscan.io/v2/api";
 
+/** How long to wait on Etherscan before giving up and freeing the slot. */
+const UPSTREAM_TIMEOUT_MS = 10_000;
+
 /** `module` → allowed `action`s. Everything else is rejected. */
 const ALLOWED: Record<string, Set<string>> = {
   contract: new Set(["getabi", "getsourcecode"]),
@@ -44,8 +47,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   url.searchParams.set("apikey", ETHERSCAN_API_KEY);
 
+  // Bound the upstream call. Without a deadline a stalled Etherscan response holds this function
+  // open until the platform's own, much longer, timeout — and enough concurrent stalls exhaust the
+  // available concurrency for every other request.
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+
   try {
-    const upstream = await fetch(url, { headers: { accept: "application/json" } });
+    const upstream = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
     const body = await upstream.text();
 
     // ABIs are immutable for a given address; let the CDN absorb repeat lookups.
@@ -53,7 +65,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader("Content-Type", "application/json");
     return res.status(upstream.ok ? 200 : 502).send(body);
   } catch (err) {
-    console.error("Etherscan proxy failed", err);
-    return res.status(502).json({ status: "0", message: "NOTOK", result: "Upstream request failed" });
+    const timedOut = (err as { name?: string })?.name === "AbortError";
+    console.error("Etherscan proxy failed", timedOut ? `timed out after ${UPSTREAM_TIMEOUT_MS}ms` : err);
+    return res.status(timedOut ? 504 : 502).json({
+      status: "0",
+      message: "NOTOK",
+      result: timedOut ? "Upstream request timed out" : "Upstream request failed",
+    });
+  } finally {
+    clearTimeout(deadline);
   }
 }

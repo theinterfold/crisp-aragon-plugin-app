@@ -28,6 +28,7 @@ import { downloadAsFile } from "@/utils/download-as-file";
 import { encodeActionsAsJson } from "@/utils/json-actions";
 import { CreditsMode } from "../utils/types";
 import { FeeEscrowCard } from "../components/fee/feeEscrowCard";
+import { PleaseWaitSpinner } from "@/components/please-wait";
 
 export default function Create() {
   const { address: selfAddress, isConnected } = useAccount();
@@ -126,7 +127,12 @@ export default function Create() {
           </div>
         </div>
 
-        <PlaceHolderOr selfAddress={selfAddress} canCreate={canCreate} isConnected={isConnected}>
+        <PlaceHolderOr
+          selfAddress={selfAddress}
+          canCreate={canCreate}
+          isConnected={isConnected}
+          isLoading={canCreateLoading}
+        >
           <p className="form-intro">
             A proposal becomes <em>active</em> the moment it is mined. Voters then have the window you set to cast
             encrypted ballots — tallies decrypt only once that window closes.
@@ -442,11 +448,10 @@ export default function Create() {
 
           {/* Fee credit */}
 
-          {isConnected && (
-            <div className="mt-8">
-              <FeeEscrowCard quote={feeQuote} />
-            </div>
-          )}
+          {/* No connection guard needed: PlaceHolderOr gates these children on a connected wallet. */}
+          <div className="mt-8">
+            <FeeEscrowCard quote={feeQuote} />
+          </div>
 
           {/* Submit */}
 
@@ -457,15 +462,15 @@ export default function Create() {
               variant="critical"
               message="You cannot create a proposal yet"
               description={
-                !isConnected
-                  ? "Connect your wallet to continue."
-                  : hasNoFeeToken
-                    ? "You have no Interfold fee token and no escrowed fee credit. Creating a proposal pays an E3 fee out of escrowed credit, which is topped up from your balance — use the faucet to get some."
-                    : needsDelegation
-                      ? "You hold enough tokens, but your voting power is 0 because you have never delegated. Token holders have no voting power until they delegate — go to Delegation and delegate to yourself."
-                      : hasNoTokens
-                        ? "You hold none of the voting token, so you have no voting power."
-                        : "Your delegated voting power is below the minimum required to create a proposal."
+                // No `!isConnected` branch: PlaceHolderOr only renders these children once the
+                // wallet is connected, so that case is handled before this card ever mounts.
+                hasNoFeeToken
+                  ? "You have no Interfold fee token and no escrowed fee credit. Creating a proposal pays an E3 fee out of escrowed credit, which is topped up from your balance — use the faucet to get some."
+                  : needsDelegation
+                    ? "You hold enough tokens, but your voting power is 0 because you have never delegated. Token holders have no voting power until they delegate — go to Delegation and delegate to yourself."
+                    : hasNoTokens
+                      ? "You hold none of the voting token, so you have no voting power."
+                      : "Your delegated voting power is below the minimum required to create a proposal."
               }
             />
           )}
@@ -497,11 +502,13 @@ const PlaceHolderOr = ({
   selfAddress,
   isConnected,
   canCreate,
+  isLoading,
   children,
 }: {
   selfAddress: Address | undefined;
   isConnected: boolean;
   canCreate: boolean | undefined;
+  isLoading: boolean;
   children: ReactNode;
 }) => {
   const { open } = useWeb3Modal();
@@ -513,10 +520,18 @@ const PlaceHolderOr = ({
           Please connect your wallet to continue.
         </MissingContentView>
       </Then>
+      {/* `useCanCreateProposal` runs two sequential read batches, and `canCreate` is false for the
+          whole of that. Without this branch the form is replaced by the "cannot create" view on
+          every load, then swapped back — so show it while the answer is still unknown. */}
+      <ElseIf true={isLoading}>
+        <PleaseWaitSpinner fullMessage="Checking whether you can create a proposal" />
+      </ElseIf>
       <ElseIf true={!canCreate}>
-        {/* Not a member */}
+        {/* Ineligible: this plugin gates on delegated voting power and fee funding, not membership.
+            The specific reason is spelled out by the AlertCard inside the form. */}
         <MissingContentView>
-          You cannot create proposals on the multisig because you are not currently defined as a member.
+          You cannot create a proposal yet. Creating one requires delegated voting power above the plugin&apos;s
+          minimum, and enough of the Interfold fee token to cover the encrypted vote round.
         </MissingContentView>
       </ElseIf>
       <Else>{children}</Else>

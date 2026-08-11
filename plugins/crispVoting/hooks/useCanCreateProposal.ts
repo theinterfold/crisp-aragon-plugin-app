@@ -42,7 +42,11 @@ export function useCanCreateProposal(): CanCreateProposal {
   const { address } = useAccount();
 
   // Phase 1: read the plugin config (min power + voting token address).
-  const { data: pluginReads, isLoading: pluginLoading } = useReadContracts({
+  const {
+    data: pluginReads,
+    isLoading: pluginLoading,
+    refetch: refetchPlugin,
+  } = useReadContracts({
     contracts: [
       {
         chainId: PUB_CHAIN.id,
@@ -66,7 +70,7 @@ export function useCanCreateProposal(): CanCreateProposal {
   const {
     data: tokenReads,
     isLoading: tokenLoading,
-    refetch,
+    refetch: refetchToken,
   } = useReadContracts({
     query: { enabled: Boolean(address && votingToken) },
     contracts: [
@@ -136,6 +140,14 @@ export function useCanCreateProposal(): CanCreateProposal {
   // The create flow tops the credit up from the wallet balance on demand, so either source is
   // enough — only an account with neither is hard-blocked.
   const hasNoFeeToken = feeBalance !== undefined && feeBalance === 0n && feeCredit !== undefined && feeCredit === 0n;
+
+  // Refresh BOTH batches. Returning only the phase-2 refetch would leave the plugin config
+  // (`minProposerVotingPower`, `getVotingToken`) stale, so a settings change would never be
+  // picked up by a caller that reasonably expects this to resync every eligibility input.
+  const refetch = () => {
+    void refetchPlugin();
+    void refetchToken();
+  };
 
   const canCreate = Boolean(address) && (noThreshold || meetsThreshold) && !hasNoFeeToken;
 

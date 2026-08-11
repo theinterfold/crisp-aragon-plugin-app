@@ -12,7 +12,28 @@ import { AddressText } from "@/components/text/address";
  * being pre-empted here.
  */
 export const RefundCard = ({ proposalId }: { proposalId: bigint }) => {
-  const { payer, isSelfPayer, isClaiming, claim } = useClaimRefund(proposalId);
+  const { payer, isSelfPayer, isClaimed, isClaiming, claim } = useClaimRefund(proposalId);
+
+  // A second claim reverts inside the refund manager, so once the on-chain `RefundClaimed` event
+  // exists the action is retired rather than left to fail. `isClaimed` is undefined while the log
+  // query is in flight or after it errored — treated as claimable, since hiding a real refund is
+  // worse than offering one that turns out to be spent.
+  if (isClaimed) {
+    return (
+      <div className="flex w-full flex-col gap-y-3 rounded-xl border border-neutral-100 bg-neutral-0 p-6 shadow-neutral-sm">
+        <AlertCard
+          variant="success"
+          message="This round's fee was refunded"
+          description="The E3 fee has been credited back to the proposal's fee payer, who can withdraw it from the proposal fee credit."
+        />
+        {payer && (
+          <p className="text-sm text-neutral-500">
+            Refunded to {isSelfPayer ? "you" : <AddressText bold={false}>{payer}</AddressText>}.
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-full flex-col gap-y-3 rounded-xl border border-neutral-100 bg-neutral-0 p-6 shadow-neutral-sm">

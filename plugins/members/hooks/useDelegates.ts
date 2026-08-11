@@ -12,6 +12,11 @@ const delegateChangedEvent = parseAbiItem(
 // Keep each getLogs range small enough for public RPCs that cap eth_getLogs.
 const CHUNK = 9_000n;
 
+// The candidate set grows with every address ever delegated to, and a single multicall carrying
+// all of them will eventually exceed an RPC's request, calldata or eth_call limits — at which
+// point the catch below discards the entire directory. Cap how many go into one batch.
+const MULTICALL_BATCH = 200;
+
 export type DelegateEntry = { address: Address; votingPower: bigint };
 
 /**
@@ -35,8 +40,17 @@ export function useDelegates() {
         setIsLoading(true);
         setError(null);
 
+        // Falling back to block 0 would scan the entire chain in 9k-block steps — thousands of
+        // getLogs calls that leave the directory spinning until the RPC gives up. A missing
+        // deployment block is a configuration error, so say so instead of trying.
+        if (!Number.isFinite(PUB_TOKEN_DEPLOYMENT_BLOCK) || PUB_TOKEN_DEPLOYMENT_BLOCK <= 0) {
+          setError("NEXT_PUBLIC_TOKEN_DEPLOYMENT_BLOCK is not configured, so the delegate list cannot be scanned.");
+          setIsLoading(false);
+          return;
+        }
+
         const latest = await publicClient.getBlockNumber();
-        const start = BigInt(PUB_TOKEN_DEPLOYMENT_BLOCK || 0);
+        const start = BigInt(PUB_TOKEN_DEPLOYMENT_BLOCK);
 
         // 1. Collect every address that has ever been delegated to.
         const candidates = new Set<string>();
@@ -64,17 +78,22 @@ export function useDelegates() {
           functionName: "totalSupply",
         })) as bigint;
 
-        const votes = addrs.length
-          ? ((await publicClient.multicall({
-              allowFailure: true,
-              contracts: addrs.map((a) => ({
-                address: PUB_TOKEN_ADDRESS,
-                abi: iVotesAbi,
-                functionName: "getVotes",
-                args: [a],
-              })) as any,
-            })) as { result?: unknown }[])
-          : [];
+        const votes: { result?: unknown }[] = [];
+        for (let i = 0; i < addrs.length; i += MULTICALL_BATCH) {
+          const batch = addrs.slice(i, i + MULTICALL_BATCH);
+          const batchVotes = (await publicClient.multicall({
+            allowFailure: true,
+            contracts: batch.map((a) => ({
+              address: PUB_TOKEN_ADDRESS,
+              abi: iVotesAbi,
+              functionName: "getVotes",
+              args: [a],
+            })) as any,
+          })) as { result?: unknown }[];
+          // Appended in slice order, so `votes[i]` still lines up with `addrs[i]` below.
+          votes.push(...batchVotes);
+          if (cancelled) return;
+        }
         if (cancelled) return;
 
         const entries: DelegateEntry[] = addrs

@@ -1,5 +1,5 @@
 import { useAccount, usePublicClient, useReadContracts } from "wagmi";
-import { erc20Abi, maxUint256, type Address } from "viem";
+import { erc20Abi, type Address } from "viem";
 import { useState } from "react";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_ENCLAVE_FEE_TOKEN_ADDRESS } from "@/constants";
@@ -96,11 +96,22 @@ export function useFeeEscrow(): FeeEscrow {
     onErrorMessage: "Could not withdraw fee credit",
   });
 
+  /**
+   * Optional chaining on `client` would make every await below resolve to `undefined` rather than
+   * fail, silently skipping the receipt waits — the UI would report success and refetch stale
+   * balances while the transactions were still pending.
+   */
+  const requireClient = () => {
+    if (!client) throw new Error("No RPC client available");
+    return client;
+  };
+
   const deposit = async (amount: bigint) => {
     if (amount <= 0n) return;
 
     try {
       setIsBusy(true);
+      const publicClient = requireClient();
       await ensureAllowance(amount);
 
       const hash = await depositWrite({
@@ -110,7 +121,7 @@ export function useFeeEscrow(): FeeEscrow {
         functionName: "deposit",
         args: [amount],
       });
-      await client?.waitForTransactionReceipt({ hash });
+      await publicClient.waitForTransactionReceipt({ hash });
       await refetchReads();
     } finally {
       setIsBusy(false);
@@ -122,6 +133,7 @@ export function useFeeEscrow(): FeeEscrow {
 
     try {
       setIsBusy(true);
+      const publicClient = requireClient();
       const hash = await withdrawWrite({
         chainId: PUB_CHAIN.id,
         abi: CrispVotingAbi,
@@ -129,7 +141,7 @@ export function useFeeEscrow(): FeeEscrow {
         functionName: "withdraw",
         args: [amount],
       });
-      await client?.waitForTransactionReceipt({ hash });
+      await publicClient.waitForTransactionReceipt({ hash });
       await refetchReads();
     } finally {
       setIsBusy(false);
@@ -142,7 +154,9 @@ export function useFeeEscrow(): FeeEscrow {
    * (or missing) approval.
    */
   const ensureAllowance = async (amount: bigint) => {
-    const current = (await client?.readContract({
+    const publicClient = requireClient();
+
+    const current = (await publicClient.readContract({
       address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
       abi: erc20Abi,
       functionName: "allowance",
@@ -151,14 +165,18 @@ export function useFeeEscrow(): FeeEscrow {
 
     if ((current ?? 0n) >= amount) return;
 
+    // Exactly `amount`, never an unlimited allowance. The spender is an upgradeable proxy
+    // (`upgradeTo` / `upgradeToAndCall` are in its ABI), so an infinite approval would remain
+    // spendable by whatever implementation sits behind it later. The deposit flow always knows
+    // the precise figure, so the only cost of scoping it is one approval per deposit.
     const hash = await approveWrite({
       chainId: PUB_CHAIN.id,
       abi: erc20Abi,
       address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
       functionName: "approve",
-      args: [PUB_CRISP_VOTING_PLUGIN_ADDRESS, maxUint256],
+      args: [PUB_CRISP_VOTING_PLUGIN_ADDRESS, amount],
     });
-    await client?.waitForTransactionReceipt({ hash });
+    await publicClient.waitForTransactionReceipt({ hash });
   };
 
   const decimals = data?.[4]?.result as number | undefined;

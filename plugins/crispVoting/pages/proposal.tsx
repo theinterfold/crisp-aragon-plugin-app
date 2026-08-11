@@ -32,7 +32,8 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
     e3FailureReason,
     status: proposalFetchStatus,
   } = useProposal(proposalIdx);
-  const canVote = useCanVote(proposalIdx);
+  // Eligibility is the token's delegated power at the proposal's snapshot, not a plugin call.
+  const canVote = useCanVote(proposal?.parameters.snapshotBlock);
   const { balance, delegatesTo } = useTokenVotes(address);
 
   const showProposalLoading = getShowProposalLoading(proposal, proposalFetchStatus);
