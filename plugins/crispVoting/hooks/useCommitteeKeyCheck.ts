@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { usePublicClient } from "wagmi";
-import { parseAbi, parseAbiItem, type Address, type Hex } from "viem";
+// viem's `hexToBytes` validates its input; a hand-rolled per-byte `Number.parseInt` yields NaN on
+// malformed hex, which a `Uint8Array` silently stores as 0.
+import { hexToBytes, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
 import { PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
 import { decodeParamSet, isCommitteeKeyAuthentic, type ChainBfvParams } from "../utils/committeeKey";
 import { getPastBlockNumberAtTimestamp } from "../utils/blockAtTimestamp";
@@ -35,15 +37,6 @@ export type CommitteeKeyResolution = {
   /** Why no key could be accepted. */
   reason?: string;
 };
-
-function hexToBytes(hex: Hex): Uint8Array {
-  const body = hex.startsWith("0x") ? hex.slice(2) : hex;
-  const out = new Uint8Array(body.length / 2);
-  for (let i = 0; i < out.length; i += 1) {
-    out[i] = Number.parseInt(body.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
 
 /**
  * Resolves the committee public key for a round, preferring the chain.
@@ -140,12 +133,35 @@ async function resolveFromBlock(
     if (latest.number === null || requestTimestamp >= latest.timestamp) return BigInt(PUB_DEPLOYMENT_BLOCK);
 
     return await getPastBlockNumberAtTimestamp(requestTimestamp, client, latest);
-  } catch {
+  } catch (err) {
+    // Surfaced rather than swallowed: the fallback is the widest scan range, so it is the case
+    // most likely to hit a provider limit, and an operator seeing slow or failing key lookups
+    // needs to know the conversion was why.
+    console.warn("Could not derive a block number for the round's request timestamp", err);
     return BigInt(PUB_DEPLOYMENT_BLOCK);
   }
 }
 
-/** Scans `CommitteePublished` for a candidate whose commitment matches the round's. */
+/** Blocks per `eth_getLogs` call. Hosted providers commonly cap the range at 10k or fewer. */
+const LOG_SCAN_CHUNK = 5_000n;
+
+/**
+ * Candidates deserialized before giving up.
+ *
+ * Each check runs a wasm BFV deserialization over up to 256 KB of attacker-supplied bytes on the
+ * main thread, and `publishCommitteePublicKey` is permissionless — so without a cap, spamming one
+ * round with events freezes the voter's tab on the vote path.
+ */
+const MAX_CANDIDATES = 20;
+
+/**
+ * Scans `CommitteePublished` for a candidate whose commitment matches the round's.
+ *
+ * Never throws: a failure here must degrade to the verified server fallback, not block the vote.
+ * A single unbounded `getLogs` over `fromBlock..latest` is exactly the request hosted providers
+ * reject on range or result-count limits, and letting that propagate took out voting entirely
+ * while skipping the fallback that would have worked.
+ */
 async function resolveFromChain(
   client: NonNullable<ReturnType<typeof usePublicClient>>,
   interfold: Address,
@@ -153,33 +169,56 @@ async function resolveFromChain(
   e3: { committeePublicKey: Hex; requestBlock: bigint },
   params: ChainBfvParams
 ): Promise<CommitteeKeyResolution> {
-  const registry = (await client.readContract({
-    address: interfold,
-    abi: interfoldAbi,
-    functionName: "ciphernodeRegistry",
-  })) as Address;
+  let scanned = 0;
 
-  const logs = await client.getLogs({
-    address: registry,
-    event: committeePublishedEvent,
-    args: { e3Id },
-    fromBlock: await resolveFromBlock(client, e3.requestBlock),
-    toBlock: "latest",
-  });
+  try {
+    const registry = (await client.readContract({
+      address: interfold,
+      abi: interfoldAbi,
+      functionName: "ciphernodeRegistry",
+    })) as Address;
 
-  if (logs.length === 0) {
-    return { reason: "No committee key has been published on-chain for this round." };
+    const fromBlock = await resolveFromBlock(client, e3.requestBlock);
+    const latest = await client.getBlockNumber();
+
+    // Newest chunk first: the key is announced once, shortly after the committee finalises, so the
+    // recent end of the range is where it is. Stopping at the first match usually means one call.
+    for (let end = latest; end >= fromBlock; end -= LOG_SCAN_CHUNK) {
+      const start = end - LOG_SCAN_CHUNK + 1n > fromBlock ? end - LOG_SCAN_CHUNK + 1n : fromBlock;
+
+      const logs = await client.getLogs({
+        address: registry,
+        event: committeePublishedEvent,
+        args: { e3Id },
+        fromBlock: start,
+        toBlock: end,
+      });
+
+      for (const log of logs) {
+        const candidate = (log.args as { publicKey?: Hex }).publicKey;
+        if (!candidate || candidate === "0x") continue;
+
+        if (scanned >= MAX_CANDIDATES) {
+          return {
+            reason: `Checked the first ${MAX_CANDIDATES} published key candidates on-chain without a match.`,
+          };
+        }
+        scanned += 1;
+
+        // Decoded once and reused on the success path.
+        const bytes = hexToBytes(candidate);
+        const verdict = await isCommitteeKeyAuthentic(bytes, e3.committeePublicKey, params);
+        if (verdict.ok) return { key: bytes, source: "chain" };
+      }
+
+      if (start === fromBlock) break;
+    }
+  } catch (err) {
+    console.warn("Committee key log scan failed; falling back to the CRISP server", err);
+    return { reason: "The on-chain committee key could not be read (the log query failed)." };
   }
 
-  for (const log of logs) {
-    const candidate = (log.args as { publicKey?: Hex }).publicKey;
-    if (!candidate || candidate === "0x") continue;
-
-    const verdict = await isCommitteeKeyAuthentic(hexToBytes(candidate), e3.committeePublicKey, params);
-    if (verdict.ok) return { key: hexToBytes(candidate), source: "chain" };
-  }
-
-  return {
-    reason: `Found ${logs.length} published key candidate(s) on-chain, none of which matched the round's commitment.`,
-  };
+  return scanned === 0
+    ? { reason: "No committee key has been published on-chain for this round." }
+    : { reason: `Checked ${scanned} published key candidate(s) on-chain, none matched the round's commitment.` };
 }

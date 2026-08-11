@@ -1,6 +1,6 @@
 import { computePublicKeyCommitment, getThresholdBfvParamsSet, ThresholdBfvParamsPresetNames } from "@interfold/sdk";
 import type { ThresholdBfvParamsPresetName } from "@interfold/sdk";
-import { decodeAbiParameters, parseAbiParameters, type Hex } from "viem";
+import { decodeAbiParameters, hexToBytes, parseAbiParameters, size, type Hex } from "viem";
 
 /** The BFV parameters a round runs under, as published on-chain. */
 export type ChainBfvParams = {
@@ -36,9 +36,24 @@ export function decodeParamSet(encoded: Hex): ChainBfvParams {
  * preset returns `undefined` — the caller must then refuse to validate rather than guess, since a
  * commitment computed under the wrong parameters never matches and would reject a legitimate key.
  */
+/**
+ * Resolved presets, keyed by parameter identity.
+ *
+ * Without this the enumeration runs once per candidate key, and the candidate count is
+ * attacker-controlled (`publishCommitteePublicKey` is permissionless) — so a spammer could force
+ * `candidates × presets` wasm parameter builds on the vote path. Parameters for a given round never
+ * change, so the answer is cacheable for the lifetime of the page.
+ */
+const presetCache = new Map<string, ThresholdBfvParamsPresetName | undefined>();
+
+const paramsKey = (p: ChainBfvParams) => `${p.degree}:${p.plaintextModulus}:${p.moduli.join(",")}`;
+
 export async function resolvePresetForParams(
   params: ChainBfvParams
 ): Promise<ThresholdBfvParamsPresetName | undefined> {
+  const key = paramsKey(params);
+  if (presetCache.has(key)) return presetCache.get(key);
+
   for (const name of ThresholdBfvParamsPresetNames) {
     const preset = await getThresholdBfvParamsSet(name);
 
@@ -51,10 +66,14 @@ export async function resolvePresetForParams(
       BigInt(preset.plaintextModulus) === params.plaintextModulus &&
       sameModuli
     ) {
+      presetCache.set(key, name);
       return name;
     }
   }
 
+  // Cached too: an unrecognised parameter set will not become recognised on a retry, and caching
+  // it stops a spam of candidates from re-running the enumeration for each one.
+  presetCache.set(key, undefined);
   return undefined;
 }
 
@@ -119,15 +138,24 @@ export async function isCommitteeKeyAuthentic(
       };
 }
 
-/** Parses a 32-byte hex commitment, rejecting the unset (all-zero) value. */
+/**
+ * Parses a 32-byte hex commitment, rejecting the unset (all-zero) value.
+ *
+ * Decoding is viem's, not hand-rolled: a per-byte `Number.parseInt` yields `NaN` on non-hex input,
+ * and assigning `NaN` into a `Uint8Array` silently stores `0`. Any 64-character garbage would
+ * therefore have decoded to 32 zero bytes — and the all-zero guard used to run on the STRING, so it
+ * would not have caught it either. The guard now runs on the decoded bytes.
+ */
 function hexToBytes32(value: Hex): Uint8Array | undefined {
-  const hex = value.startsWith("0x") ? value.slice(2) : value;
-  if (hex.length !== 64) return undefined;
-  if (/^0+$/.test(hex)) return undefined;
-
-  const out = new Uint8Array(32);
-  for (let i = 0; i < 32; i += 1) {
-    out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  let decoded: Uint8Array;
+  try {
+    if (size(value) !== 32) return undefined;
+    decoded = hexToBytes(value);
+  } catch {
+    return undefined;
   }
-  return out;
+
+  if (decoded.every((byte) => byte === 0)) return undefined;
+
+  return decoded;
 }

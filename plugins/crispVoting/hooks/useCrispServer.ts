@@ -13,6 +13,24 @@ import { crispSdk } from "../utils/crispSdk";
 import { hashMessage } from "viem";
 import { getRandomVoterToMask } from "../utils/voters";
 
+/**
+ * Converts the server's `committee_public_key` to bytes, or `undefined` if it is not the byte array
+ * the type claims.
+ *
+ * `getRoundState` only CASTS the parsed JSON, so the declared `number[]` is a promise the server is
+ * not held to. `new Uint8Array("...")` on a string yields an empty array rather than throwing, and
+ * a array of non-numbers yields zeros — either way the caller would go on to treat junk as a key.
+ * Returning `undefined` instead lets the resolver report "no server key" honestly.
+ */
+function toKeyBytes(value: unknown): Uint8Array | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+
+  const valid = value.every((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 255);
+  if (!valid) return undefined;
+
+  return Uint8Array.from(value as number[]);
+}
+
 export const CRISP_SERVER_STATE_LITE_ROUTE = "state/lite";
 export const CRISP_SERVER_STATE_TOKEN_HOLDERS = "state/token-holders";
 export const CRISP_SERVER_STATE_ELIGIBLE_VOTERS = "state/eligible-addresses";
@@ -249,7 +267,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       // recomputed BFV commitment matches the round's on-chain `committeePublicKey`, so nobody —
       // relayer or log spammer — can substitute a key they hold the secret for and decrypt the
       // ballot. Resolved BEFORE anything is encrypted to it.
-      const resolved = await resolveCommitteeKey(new Uint8Array(roundState.committee_public_key));
+      const resolved = await resolveCommitteeKey(toKeyBytes(roundState.committee_public_key));
       if (!resolved.key) {
         const reason = resolved.reason ?? "The committee public key could not be verified.";
         setError(reason);
