@@ -32,7 +32,8 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
     e3FailureReason,
     status: proposalFetchStatus,
   } = useProposal(proposalIdx);
-  const canVote = useCanVote(proposalIdx);
+  // Eligibility is the token's delegated power at the proposal's snapshot, not a plugin call.
+  const canVote = useCanVote(proposal?.parameters.snapshotBlock);
   const { balance, delegatesTo } = useTokenVotes(address);
 
   const showProposalLoading = getShowProposalLoading(proposal, proposalFetchStatus);
@@ -106,7 +107,11 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
                 options={options}
                 disabled={
                   isCommitteeReady === false ||
-                  canVote === false ||
+                  // `canVote !== true`, not `=== false`: it is undefined while the snapshot read
+                  // is pending or after it failed, and an unknown eligibility must not leave the
+                  // action live. The error copy above still keys off a definitive `false`, so an
+                  // in-flight read disables the button without accusing anyone of being ineligible.
+                  canVote !== true ||
                   proposalStatus !== ProposalStatus.ACTIVE ||
                   Number(proposal?.parameters.startDate) > Math.round(Date.now() / 1000)
                 }

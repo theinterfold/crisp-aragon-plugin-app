@@ -30,7 +30,13 @@ export function readInsufficientFeeCredit(err: unknown): FeeCreditShortfall | un
   if (!(revert instanceof ContractFunctionRevertedError)) return undefined;
   if (revert.data?.errorName !== "InsufficientFeeCredit") return undefined;
 
-  const [payer, required, available] = revert.data.args as readonly [Address, bigint, bigint];
+  // `args` is optional on the decoded data: viem can match the error selector and still fail to
+  // decode the arguments. Destructuring `undefined` would throw a TypeError that replaces the
+  // original revert in the caller's catch block, reporting a decoding bug as a proposal failure.
+  const args = revert.data.args as readonly [Address, bigint, bigint] | undefined;
+  if (!args || args.length < 3) return undefined;
+
+  const [payer, required, available] = args;
 
   return { payer, required, available, missing: required - available };
 }

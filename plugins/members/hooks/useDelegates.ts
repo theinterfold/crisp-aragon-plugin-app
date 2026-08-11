@@ -12,6 +12,11 @@ const delegateChangedEvent = parseAbiItem(
 // Keep each getLogs range small enough for public RPCs that cap eth_getLogs.
 const CHUNK = 9_000n;
 
+// The candidate set grows with every address ever delegated to, and a single multicall carrying
+// all of them will eventually exceed an RPC's request, calldata or eth_call limits — at which
+// point the catch below discards the entire directory. Cap how many go into one batch.
+const MULTICALL_BATCH = 200;
+
 export type DelegateEntry = { address: Address; votingPower: bigint };
 
 /**
@@ -35,8 +40,35 @@ export function useDelegates() {
         setIsLoading(true);
         setError(null);
 
+        // Falling back to block 0 would scan the entire chain in 9k-block steps — thousands of
+        // getLogs calls that leave the directory spinning until the RPC gives up. A missing
+        // deployment block is a configuration error, so say so instead of trying.
+        //
+        // `isSafeInteger`, not `isFinite`: a fractional value would reach `BigInt()` and throw
+        // (surfacing as the generic "Could not load delegates"), and a value past 2^53 would have
+        // already lost block-number precision by the time it got here.
+        if (!Number.isSafeInteger(PUB_TOKEN_DEPLOYMENT_BLOCK) || PUB_TOKEN_DEPLOYMENT_BLOCK <= 0) {
+          setError("NEXT_PUBLIC_TOKEN_DEPLOYMENT_BLOCK is not a valid block number, so delegates cannot be scanned.");
+          setIsLoading(false);
+          return;
+        }
+
         const latest = await publicClient.getBlockNumber();
-        const start = BigInt(PUB_TOKEN_DEPLOYMENT_BLOCK || 0);
+        // The effect can be torn down while this await is pending. Everything past here writes
+        // state, so a superseded run must stop before it overwrites the newer one's results.
+        if (cancelled) return;
+
+        const start = BigInt(PUB_TOKEN_DEPLOYMENT_BLOCK);
+
+        // A deployment block past the chain head skips the loop entirely and renders an empty
+        // directory as though the token simply had no delegates — misconfiguration disguised as data.
+        if (start > latest) {
+          setError(
+            `NEXT_PUBLIC_TOKEN_DEPLOYMENT_BLOCK (${PUB_TOKEN_DEPLOYMENT_BLOCK}) is ahead of the chain head (${latest}).`
+          );
+          setIsLoading(false);
+          return;
+        }
 
         // 1. Collect every address that has ever been delegated to.
         const candidates = new Set<string>();
@@ -58,23 +90,35 @@ export function useDelegates() {
         const addrs = Array.from(candidates) as Address[];
 
         // 2. Read the total supply (for %) and each candidate's current voting power.
+        //
+        // Every read below is pinned to `latest`. Left unpinned they resolve against whatever head
+        // each request happens to hit, so a delegation landing mid-scan could be counted in one
+        // batch and not another — producing percentages that do not sum correctly and a ranking
+        // assembled from two different chain states.
         const supply = (await publicClient.readContract({
           address: PUB_TOKEN_ADDRESS,
           abi: erc20Abi,
           functionName: "totalSupply",
+          blockNumber: latest,
         })) as bigint;
 
-        const votes = addrs.length
-          ? ((await publicClient.multicall({
-              allowFailure: true,
-              contracts: addrs.map((a) => ({
-                address: PUB_TOKEN_ADDRESS,
-                abi: iVotesAbi,
-                functionName: "getVotes",
-                args: [a],
-              })) as any,
-            })) as { result?: unknown }[])
-          : [];
+        const votes: { result?: unknown }[] = [];
+        for (let i = 0; i < addrs.length; i += MULTICALL_BATCH) {
+          const batch = addrs.slice(i, i + MULTICALL_BATCH);
+          const batchVotes = (await publicClient.multicall({
+            allowFailure: true,
+            blockNumber: latest,
+            contracts: batch.map((a) => ({
+              address: PUB_TOKEN_ADDRESS,
+              abi: iVotesAbi,
+              functionName: "getVotes",
+              args: [a],
+            })) as any,
+          })) as { result?: unknown }[];
+          // Appended in slice order, so `votes[i]` still lines up with `addrs[i]` below.
+          votes.push(...batchVotes);
+          if (cancelled) return;
+        }
         if (cancelled) return;
 
         const entries: DelegateEntry[] = addrs

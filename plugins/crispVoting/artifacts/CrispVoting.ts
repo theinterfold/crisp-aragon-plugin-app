@@ -1,3 +1,6 @@
+// Generated from the CrispVoting build artifact — do not edit by hand.
+// `as const` is load-bearing: without it viem and wagmi fall back to untyped `any` arguments,
+// which is how `uint64` parameters silently accepted JavaScript numbers instead of bigints.
 export const CrispVotingAbi = [
   {
     type: "constructor",
@@ -1300,4 +1303,4 @@ export const CrispVotingAbi = [
     name: "ZeroAddress",
     inputs: [],
   },
-];
+] as const;

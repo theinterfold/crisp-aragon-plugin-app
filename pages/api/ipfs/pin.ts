@@ -14,6 +14,9 @@ const PINATA_PIN_URL = "https://api.pinata.cloud/pinning/pinFileToIPFS";
 /** Proposal metadata is a small JSON blob; anything larger is not ours. */
 const MAX_BODY_BYTES = 512 * 1024;
 
+/** How long to wait on Pinata before giving up and freeing the slot. */
+const UPSTREAM_TIMEOUT_MS = 15_000;
+
 export const config = {
   api: {
     bodyParser: { sizeLimit: "512kb" },
@@ -47,6 +50,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   const fileName = typeof name === "string" ? name.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64) : "";
   const safeName = fileName || "metadata.json";
 
+  // Bound the upstream call: a stalled Pinata response would otherwise hold this function open
+  // until the platform timeout, and enough concurrent stalls exhaust the available concurrency.
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+
   try {
     const form = new FormData();
     form.append("file", new Blob([content], { type: "text/plain" }), safeName);
@@ -57,6 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       method: "POST",
       headers: { Authorization: `Bearer ${PINATA_JWT}` },
       body: form,
+      signal: controller.signal,
     });
 
     const data = (await pinRes.json()) as { IpfsHash?: string; error?: unknown };
@@ -69,7 +78,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
     return res.status(200).json({ uri: `ipfs://${data.IpfsHash}` });
   } catch (err) {
-    console.error("Pinata pin threw", err);
-    return res.status(502).json({ error: "Could not pin the metadata" });
+    const timedOut = (err as { name?: string })?.name === "AbortError";
+    console.error("Pinata pin threw", timedOut ? `timed out after ${UPSTREAM_TIMEOUT_MS}ms` : err);
+    return res.status(timedOut ? 504 : 502).json({
+      error: timedOut ? "Pinning timed out" : "Could not pin the metadata",
+    });
+  } finally {
+    clearTimeout(deadline);
   }
 }

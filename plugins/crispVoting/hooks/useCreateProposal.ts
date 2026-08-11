@@ -105,6 +105,16 @@ export function useCreateProposal() {
       });
     }
 
+    // The end date is required: the contract's `_endDate = 0` shorthand means "the earliest date
+    // minDuration allows", which for a plugin configured with minDuration 0 is a vote that closes
+    // in the same block. Demand an explicit, future date rather than silently creating one.
+    if (!Number.isFinite(endDateTime) || endDateTime <= Math.floor(Date.now() / 1000)) {
+      return addAlert("Invalid proposal dates", {
+        description: "Please set an end date in the future",
+        type: "error",
+      });
+    }
+
     for (const item of resources) {
       if (!item.name.trim()) {
         return addAlert("Invalid resource name", {
@@ -138,8 +148,11 @@ export function useCreateProposal() {
       // sending a stale timestamp that is guaranteed to revert.
       const buildArgs = () => {
         const now = Math.floor(Date.now() / 1000);
-        const safeStartDateTime = startDateTime <= now ? 0 : startDateTime;
-        return [toHex(ipfsPin), actions, safeStartDateTime, endDateTime, data] as const;
+        // An empty date field parses to NaN, and `NaN <= now` is false — so a bare comparison
+        // would pass NaN straight through to viem, which cannot encode it as `uint64`. Anything
+        // missing or already past becomes 0, which the contract reads as "start at block.timestamp".
+        const safeStartDateTime = Number.isFinite(startDateTime) && startDateTime > now ? startDateTime : 0;
+        return [toHex(ipfsPin), actions, BigInt(safeStartDateTime), BigInt(endDateTime), data] as const;
       };
 
       // The plugin debits escrowed credit rather than pulling the fee from the caller, so the
@@ -147,8 +160,13 @@ export function useCreateProposal() {
       // the price up front and the escrow panel lets the user deposit it, but this stays as a
       // safety net: an unset start date normalises to `block.timestamp` on-chain, so the window
       // — and the fee — can move between the quote and this transaction.
+      // Not optional-chained on purpose: `client?.simulateContract(...)` resolves to `undefined`
+      // when there is no client, which reads as "the simulation passed" and skips the funding
+      // check entirely — the create transaction would then revert with InsufficientFeeCredit.
+      if (!client) throw new Error("No RPC client available");
+
       const shortfall = await client
-        ?.simulateContract({
+        .simulateContract({
           account: selfAddress,
           abi: CrispVotingAbi,
           address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
