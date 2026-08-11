@@ -105,6 +105,18 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
   const refundAmount = (distribution as { requesterAmount?: bigint } | undefined)?.requesterAmount;
 
   /**
+   * Every read `claim()` branches on must have resolved.
+   *
+   * `isMarkedFailed` and `isCalculated` are false both when the step genuinely has not happened
+   * AND while their read is still in flight — the two are indistinguishable from the flags alone.
+   * Acting on the in-flight case re-sends a step that already completed, which reverts
+   * (`E3AlreadyFailed`) and costs the caller gas for nothing. Checking `interfoldAddress` alone
+   * was not enough: `stageRaw` and `distribution` resolve strictly after it, since their queries
+   * are chained off it.
+   */
+  const isReady = Boolean(interfoldAddress) && stageRaw !== undefined && distribution !== undefined;
+
+  /**
    * Identity of the newest status query, and the proposal currently on screen.
    * See `isRefundQueryStale` for why both are checked.
    */
@@ -170,8 +182,17 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
    */
   const [error, setError] = useState<string | undefined>(undefined);
 
+  // An error belongs to the proposal it happened on. Without this, navigating to another
+  // proposal carries the previous one's failure across and pins it to a round it never affected.
+  useEffect(() => {
+    setError(undefined);
+  }, [proposalId, e3Id]);
+
   const claim = async () => {
     if (proposalId === undefined || e3Id === undefined) return;
+    // Belt and braces alongside the disabled button: acting on unresolved reads re-sends a
+    // completed step and burns the caller's gas on a revert.
+    if (!isReady) return;
 
     setError(undefined);
 
@@ -244,11 +265,8 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
     pendingSteps: (isMarkedFailed ? 0 : 1) + (isCalculated ? 0 : 1) + 1,
     /** Why the last settlement attempt failed, if it did. */
     error,
-    /**
-     * The addresses `claim()` needs are loaded. Without this the button is clickable before the
-     * `interfold` read resolves, and settlement throws before sending anything.
-     */
-    isReady: Boolean(interfoldAddress),
+    /** Every read `claim()` branches on has resolved; see the definition above. */
+    isReady,
     isClaiming,
     claim,
   };

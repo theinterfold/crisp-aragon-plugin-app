@@ -74,11 +74,15 @@ export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: big
         description="The encrypted vote round could not complete, so Interfold refunds the fee it was paid. Settling it credits the fee back to whoever paid for this proposal."
       />
 
-      <ul className="flex flex-col gap-y-1">
-        <Step done={isMarkedFailed}>Record the failure on-chain</Step>
-        <Step done={isCalculated}>Calculate the refund</Step>
-        <Step done={false}>Credit it to the fee payer</Step>
-      </ul>
+      {/* Same reason as the transaction count: an unresolved read is indistinguishable from an
+          outstanding step, so ticks would flicker on as the reads land. */}
+      {isReady && (
+        <ul className="flex flex-col gap-y-1">
+          <Step done={isMarkedFailed}>Record the failure on-chain</Step>
+          <Step done={isCalculated}>Calculate the refund</Step>
+          <Step done={false}>Credit it to the fee payer</Step>
+        </ul>
+      )}
 
       {amountLabel && <p className="text-sm text-neutral-500">Refund: {amountLabel}.</p>}
 
@@ -88,10 +92,14 @@ export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: big
         </p>
       )}
 
+      {/* Held back until the reads resolve: `pendingSteps` counts an unresolved step as
+          outstanding, so showing it early claims more transactions than are actually needed. */}
       <p className="text-sm text-neutral-500">
-        {pendingSteps > 1
-          ? `Requires ${pendingSteps} transactions — none of these steps happen automatically.`
-          : "Requires one transaction."}
+        {!isReady
+          ? "Checking what still needs to happen…"
+          : pendingSteps > 1
+            ? `Requires ${pendingSteps} transactions — none of these steps happen automatically.`
+            : "Requires one transaction."}
       </p>
 
       {/* Settlement failures surface here rather than only in the console: several of them
@@ -112,7 +120,7 @@ export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: big
           disabled={isClaiming || !isReady}
           onClick={() => void claim()}
         >
-          {isMarkedFailed ? "Settle refund" : "Mark failed and refund"}
+          {!isReady ? "Checking…" : isMarkedFailed ? "Settle refund" : "Mark failed and refund"}
         </Button>
       </div>
     </div>

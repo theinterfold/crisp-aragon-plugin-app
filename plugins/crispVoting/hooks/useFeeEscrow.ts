@@ -1,6 +1,6 @@
 import { useAccount, usePublicClient, useReadContracts } from "wagmi";
 import { erc20Abi, type Address } from "viem";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_ENCLAVE_FEE_TOKEN_ADDRESS } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
@@ -46,6 +46,12 @@ export function useFeeEscrow(): FeeEscrow {
   // rather than by wagmi. The card discards these promises, so an uncaught throw is an unhandled
   // rejection and a button that silently does nothing.
   const [error, setError] = useState<string | undefined>(undefined);
+
+  // An error belongs to the account that hit it. Switching wallets otherwise carries the previous
+  // account's failure over and shows it against balances it has nothing to do with.
+  useEffect(() => {
+    setError(undefined);
+  }, [address]);
 
   const {
     data,
