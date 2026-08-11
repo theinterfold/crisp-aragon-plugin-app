@@ -5,6 +5,7 @@ import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
 import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
+import { isRefundQueryStale } from "../utils/refundQuery";
 
 const refundClaimedEvent = parseAbiItem(
   "event RefundClaimed(uint256 indexed proposalId, uint256 indexed e3Id, address indexed payer, uint256 amount)"
@@ -42,21 +43,24 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
   });
 
   /**
-   * Monotonic id for the newest status query. Every `checkClaimed` call claims one and only writes
-   * state if it still holds it — so a `getLogs` for proposal A that lands after the hook moved to
-   * proposal B is discarded rather than shown as B's answer.
+   * Identity of the newest status query, and the proposal currently on screen. `isRefundQueryStale`
+   * checks a finished query against both before it is allowed to write state.
    *
-   * A ref rather than a per-call "is this stale?" argument: the argument form defaults to "never
+   * Refs rather than a per-call "is this stale?" argument: the argument form defaults to "never
    * stale", so any caller that forgets to pass one silently loses the guard — which is exactly how
    * the refresh inside `claim` ended up unprotected.
    */
   const latestQuery = useRef(0);
+  const activeProposalId = useRef<bigint | undefined>(proposalId);
 
   const checkClaimed = useCallback(async () => {
     if (!client || proposalId === undefined) return;
 
-    const query = ++latestQuery.current;
-    const isStale = () => latestQuery.current !== query;
+    // Captured, not read at completion time: this closure belongs to whichever proposal was
+    // current when it was created, which is not necessarily the one on screen when it finishes.
+    const query = { id: ++latestQuery.current, proposalId };
+    const isStale = () =>
+      isRefundQueryStale(query, { latestId: latestQuery.current, activeProposalId: activeProposalId.current });
 
     try {
       const logs = await client.getLogs({
@@ -78,14 +82,15 @@ export function useClaimRefund(proposalId: bigint | undefined, enabled = true) {
 
   useEffect(() => {
     // Clear the previous proposal's answer immediately. Without this the card would keep showing
-    // proposal A's "already refunded" state while B's query is still in flight. Bumping the id
-    // also retires any in-flight query from the proposal we just left.
+    // proposal A's "already refunded" state while B's query is still in flight. Moving the active
+    // proposal and bumping the id together retires everything issued for the proposal just left.
+    activeProposalId.current = proposalId;
     latestQuery.current += 1;
     setIsClaimed(undefined);
 
     if (!active) return;
     void checkClaimed();
-  }, [active, checkClaimed]);
+  }, [active, proposalId, checkClaimed]);
 
   const { writeContractAsync } = useTransactionManager({
     onSuccessMessage: "Refund claimed",
