@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 import { CreditsMode } from "../utils/types";
 import type { EligibleVoter, IRoundDetailsResponse, VoteData, VotingStep } from "../utils/types";
-import { encodeSolidityProof, getZeroVote } from "@crisp-e3/sdk";
+import { encodeSolidityProof, getScaledBalance, getZeroVote } from "@crisp-e3/sdk";
 import { iVotesAbi } from "../artifacts/iVotes";
 import { publicClient } from "../utils/client";
 import { useAlerts } from "@/context/Alerts";
@@ -29,6 +29,31 @@ function toKeyBytes(value: unknown): Uint8Array | undefined {
   if (!valid) return undefined;
 
   return Uint8Array.from(value as number[]);
+}
+
+/**
+ * The timepoint to read the voter's power at when building a ballot.
+ *
+ * This must be the point the CRISP server built the census from, NOT the proposal's
+ * on-chain `snapshotBlock`. The census leaf is `hash(address, scaledBalance)`, so a
+ * balance read at any other timepoint hashes to a leaf that isn't in the server's
+ * merkle tree and the membership proof fails.
+ *
+ * The two can differ in *value* (the server pins its snapshot when the round starts,
+ * the contract pins `block.number - 1` at proposal creation) and in *units*: a token
+ * with `CLOCK_MODE=timestamp` (EIP-6372) records a UNIX timestamp there, and calling
+ * `getPastVotes` with a block number against such a token is a future lookup that
+ * reverts. So the value is taken from the server, which is the authority on it, and
+ * only falls back to the on-chain one when the server does not report it.
+ */
+function censusSnapshot(roundState: IRoundDetailsResponse, chainSnapshot: bigint): bigint {
+  const served = roundState.snapshot_block;
+  if (served !== undefined && served !== null && served !== "") {
+    const parsed = BigInt(served);
+    if (parsed > 0n) return parsed;
+  }
+
+  return chainSnapshot;
 }
 
 export const CRISP_SERVER_STATE_LITE_ROUTE = "state/lite";
@@ -185,7 +210,8 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
   const handleVote = async (
     e3Id: bigint,
     voteOption: bigint,
-    blockNumber: bigint,
+    /** The proposal's on-chain `snapshotBlock`; only a fallback — see `censusSnapshot`. */
+    chainSnapshot: bigint,
     numOptions: number,
     roundState: IRoundDetailsResponse
   ): Promise<VoteData> => {
@@ -207,7 +233,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
         address: PUB_TOKEN_ADDRESS,
         abi: iVotesAbi,
         functionName: "getPastVotes",
-        args: [address as `0x${string}`, blockNumber],
+        args: [address as `0x${string}`, censusSnapshot(roundState, chainSnapshot)],
       });
 
       const decimals = await publicClient.readContract({
@@ -216,7 +242,11 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
         functionName: "decimals",
       });
 
-      adjustedBalance = balance / 10n ** BigInt(decimals / 2);
+      // Scaling comes from the SDK rather than being reimplemented here: it is the same
+      // function the CRISP server used to build the census, so our leaf
+      // `hash(address, adjustedBalance)` can never drift out of the merkle tree.
+      // `CrispVoting._voteScale()` mirrors it on-chain for the quorum denominator.
+      adjustedBalance = getScaledBalance(balance, BigInt(decimals));
     }
 
     const vote = Array.from({ length: numOptions }, (_, i) =>

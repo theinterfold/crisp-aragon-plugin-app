@@ -45,7 +45,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
     onChainBlockedReason,
   } = useCrispServer(proposal?.e3Id);
   // Eligibility is the token's delegated power at the proposal's snapshot, not a plugin call.
-  const canVote = useCanVote(proposal?.parameters.snapshotBlock);
+  const canVote = useCanVote(proposal?.e3Id, proposal?.parameters.snapshotBlock);
   const { balance, delegatesTo } = useTokenVotes(address);
 
   const showProposalLoading = getShowProposalLoading(proposal, proposalFetchStatus);

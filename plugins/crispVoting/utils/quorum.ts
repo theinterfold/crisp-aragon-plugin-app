@@ -5,15 +5,19 @@ export const RATIO_BASE = 100n;
 
 /**
  * The factor by which each voter's power is divided before being submitted to
- * CRISP (see `useCrispServer`): in token (CUSTOM) credit mode each voter's power
- * is divided by `10^(decimals/2)` so the plaintext vote fits the CRISP integer
- * vote vector. CONSTANT mode submits raw credit counts and is not scaled.
+ * CRISP (see `useCrispServer`): in token (CUSTOM) credit mode the CRISP producer
+ * keeps ONE decimal of precision, i.e. each voter's power is divided by
+ * `10^(decimals-1)`, so the plaintext vote fits the CRISP integer vote vector.
+ * CONSTANT mode submits raw credit counts and is not scaled.
  *
- * This MUST stay in sync with `CrispVoting._voteScale()` on-chain.
+ * The authority is the CRISP SDK's `getScaledBalance`; this MUST stay in sync with
+ * it and with `CrispVoting._voteScale()` on-chain. An 18-decimal token scales by
+ * 10**17 — the old `10^(decimals/2)` (10**9) understated turnout by 10**8 and made
+ * any non-zero `minParticipation` unreachable.
  */
 export function voteScale(creditMode: CreditsMode | number | undefined, decimals: number): bigint {
   if (creditMode === CreditsMode.CONSTANT) return 1n;
-  return 10n ** BigInt(Math.floor(decimals / 2));
+  return decimals > 1 ? 10n ** BigInt(decimals - 1) : 1n;
 }
 
 /**
@@ -67,8 +71,8 @@ export function computeQuorum(
 
 /**
  * Convert a scaled tally count back into a human-readable token amount.
- * Reverses the `10^(decimals/2)` vote scaling and the token's own decimals:
- *   tokens = scaledCount * voteScale / 10^decimals = scaledCount / 10^(decimals - decimals/2)
+ * Reverses the `10^(decimals-1)` vote scaling and the token's own decimals:
+ *   tokens = scaledCount * voteScale / 10^decimals = scaledCount / 10
  * For CONSTANT mode the tally is a raw credit count and is returned as-is.
  */
 export function tallyCountToTokens(
@@ -77,8 +81,6 @@ export function tallyCountToTokens(
   decimals: number
 ): number {
   if (creditMode === CreditsMode.CONSTANT) return Number(scaledCount);
-
-  const shift = decimals - Math.floor(decimals / 2);
-  const divisor = 10 ** shift;
-  return Number(scaledCount) / divisor;
+  if (decimals <= 1) return Number(scaledCount) / 10 ** decimals;
+  return Number(scaledCount) / 10;
 }

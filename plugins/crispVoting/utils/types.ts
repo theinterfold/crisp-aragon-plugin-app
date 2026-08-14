@@ -105,6 +105,13 @@ export interface IRoundDetailsResponse {
   start_time: string;
   duration: string;
   expiration: string;
+  /**
+   * The timepoint the server built the census from, in the voting token's clock units
+   * (a block number for a block-clocked token, a UNIX timestamp for an EIP-6372
+   * `CLOCK_MODE=timestamp` one). Optional because older servers do not report it —
+   * see `censusSnapshot` in `useCrispServer`.
+   */
+  snapshot_block?: number | string;
   committee_public_key: number[];
   emojis: [string, string];
   token_address: string;
