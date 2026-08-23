@@ -16,7 +16,11 @@ const interfoldAbi = parseAbi([
 const crispProgramAbi = parseAbi([
   "function publishInput(uint256 e3Id, bytes data)",
   "function getRoundData(uint256 e3Id) view returns (uint256 merkleRoot, bytes32 paramsHash, uint256 numOptions, uint8 creditMode, uint256 inputRoot, uint40 numberOfVotes)",
+  "function censusModeOf(uint256 e3Id) view returns (uint8)",
 ]);
+
+/// Mirrors `CRISPProgram.CensusMode`.
+const CENSUS_MODE_ONCHAIN = 2;
 
 export type PublishVote = {
   /** Every precondition `publishInput` enforces is satisfied right now. */
@@ -92,8 +96,25 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
 
   const merkleRoot = (roundData as readonly [bigint, ...unknown[]] | undefined)?.[0];
 
+  const { data: censusModeRaw } = useReadContract({
+    chainId: PUB_CHAIN.id,
+    address: programAddress,
+    abi: crispProgramAbi,
+    functionName: "censusModeOf",
+    args: [e3Id ?? 0n],
+    query: { enabled: enabled && !!programAddress },
+  });
+
+  // An on-chain census never posts a root: `_eligibility` reads power from the token per input and
+  // never consults `merkleRoot`. Requiring one would block publishing forever on exactly the mode
+  // that removes the census, and report a missing root the round is never going to have.
+  const requiresMerkleRoot = censusModeRaw !== undefined && Number(censusModeRaw) !== CENSUS_MODE_ONCHAIN;
+
   const isLoading =
-    enabled && (stageRaw === undefined || e3 === undefined || (!!programAddress && roundData === undefined));
+    enabled &&
+    (stageRaw === undefined ||
+      e3 === undefined ||
+      (!!programAddress && (roundData === undefined || censusModeRaw === undefined)));
 
   /**
    * Mirrors every guard in `publishInput` so the UI can refuse before spending gas on a revert,
@@ -105,7 +126,7 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     if (stageRaw !== undefined && Number(stageRaw) !== E3Stage.KeyPublished) {
       return "The committee key has not been published yet, so the round is not accepting votes.";
     }
-    if (merkleRoot === 0n) {
+    if (requiresMerkleRoot && merkleRoot === 0n) {
       return "The census merkle root has not been set for this round yet.";
     }
     if (inputWindow) {

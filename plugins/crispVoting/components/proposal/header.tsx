@@ -1,4 +1,5 @@
 import { ProposalStatus } from "@aragon/ods";
+import { e3RoundNumber } from "../../utils/ballotDigest";
 import Link from "next/link";
 import type { Proposal } from "../../utils/types";
 import { useProposalStatus } from "../../hooks/useProposalStatus";
@@ -40,7 +41,7 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, 
             Proposals
           </Link>
           <span className="detail-kicker">/</span>
-          <span className="detail-kicker">E3 · {proposal.e3Id.toString()}</span>
+          <span className="detail-kicker">E3 · {e3RoundNumber(proposal.e3Id).toString()}</span>
         </div>
 
         <div className="flex w-full flex-col">

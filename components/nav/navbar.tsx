@@ -12,6 +12,7 @@ import {
   PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
   PUB_PROJECT_LOGO,
   PUB_TOKEN_ADDRESS,
+  PUB_FAUCET_ADDRESS,
 } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
 import { useAccount, useReadContract } from "wagmi";
@@ -75,26 +76,14 @@ export const Navbar: React.FC = () => {
       return;
     }
 
-    // DAO voting token: only ever needed once, so mint a single token when empty.
-    if (balanceDAO === 0n) {
-      writeContract({
-        chainId: PUB_CHAIN.id,
-        abi: iVotesAbi,
-        address: PUB_TOKEN_ADDRESS,
-        functionName: "mint",
-        args: [address, toBaseUnits(DAO_FAUCET_TOKENS, Number(daoDecimals ?? 18))],
-      });
-    } else {
-      addAlert("You already have DAO tokens", { timeout: 1000 });
-    }
-
-    // Fee token (USDC): consumed on every proposal, so always top up on click.
+    // The tokens have no open mint: the faucet contract drips both FOLD and the fee token,
+    // topping up whichever of the caller's balances sits below its threshold (and reverting
+    // "You have enough tokens" when neither does).
     writeContract({
       chainId: PUB_CHAIN.id,
-      abi: iVotesAbi,
-      address: PUB_ENCLAVE_FEE_TOKEN_ADDRESS,
-      functionName: "mint",
-      args: [address, toBaseUnits(FEE_FAUCET_TOKENS, Number(feeDecimals ?? 6))],
+      abi: [{ type: "function", name: "faucet", stateMutability: "nonpayable", inputs: [], outputs: [] }] as const,
+      address: PUB_FAUCET_ADDRESS,
+      functionName: "faucet",
     });
   };
 

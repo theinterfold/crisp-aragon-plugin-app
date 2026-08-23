@@ -24,7 +24,7 @@ export function useCensusSnapshot(e3Id: bigint | undefined, chainSnapshot: bigin
     staleTime: Infinity,
     enabled: e3Id !== undefined,
     queryFn: async () => {
-      const details = await crispSdk.getRoundTokenDetails(Number(e3Id));
+      const details = await crispSdk.getRoundTokenDetails(e3Id!);
       return details.snapshotBlock > 0n ? details.snapshotBlock : null;
     },
     // A round the server has not indexed yet is not an error worth retrying hard.

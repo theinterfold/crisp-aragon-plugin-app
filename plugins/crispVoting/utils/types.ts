@@ -99,7 +99,7 @@ export type VotesReceivedResponse = {
 export interface IRoundDetailsResponse {
   id: string;
   chain_id: string;
-  enclave_address: string;
+  interfold_address: string;
   status: string;
   vote_count: string;
   start_time: string;
@@ -132,8 +132,6 @@ export interface VoteData {
   vote: Vote;
   slotAddress: string;
   balance: bigint;
-  signature: string;
-  messageHash: `0x${string}`;
 }
 
 export enum CreditsMode {

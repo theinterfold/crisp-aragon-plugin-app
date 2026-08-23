@@ -10,7 +10,7 @@ import type { RawAction, ProposalMetadata } from "@/utils/types";
 import type { IRoundDetailsResponse, Proposal, Tally } from "../utils/types";
 import type { AbiEvent, Hex } from "viem";
 import { CreditsMode } from "../utils/types";
-import { CRISP_SERVER_STATE_LITE_ROUTE, CRISP_SERVER_STATE_ELIGIBLE_VOTERS } from "./useCrispServer";
+import { crispSdk } from "../utils/crispSdk";
 import { useE3Status } from "./useE3Status";
 
 type ProposalCreatedLogResponse = {
@@ -101,15 +101,14 @@ export function useProposal(proposalId: bigint) {
     // Round failed on-chain (committee/DKG): no point polling the CRISP server.
     if (e3Failed) return;
 
-    const roundId = Number(proposalRaw.e3Id.toString());
+    // E3 ids are namespaced (contract address in the high bits, ~1e76), so they only survive
+    // as bigints — the SDK (0.18) takes them verbatim.
+    const roundId = proposalRaw.e3Id;
 
-    fetch(`${PUB_CRISP_SERVER_URL}/${CRISP_SERVER_STATE_LITE_ROUTE}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ round_id: roundId }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(async (data: IRoundDetailsResponse | null) => {
+    crispSdk
+      .getRoundStateLite(roundId)
+      .then(async (raw) => {
+        const data = raw as unknown as IRoundDetailsResponse | null;
         setIsTallied(data?.status === "Finished");
         setIsCommitteeReady(
           data
@@ -119,16 +118,8 @@ export function useProposal(proposalId: bigint) {
 
         if (data && data.credit_mode === CreditsMode.CONSTANT && data.credits && !eligibleVotersFetched.current) {
           eligibleVotersFetched.current = true;
-          const res = await fetch(`${PUB_CRISP_SERVER_URL}/${CRISP_SERVER_STATE_ELIGIBLE_VOTERS}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ round_id: roundId }),
-          });
-
-          if (res.ok) {
-            const voters = await res.json();
-            setTotalVotingPower(BigInt(data.credits) * BigInt(voters.length));
-          }
+          const voters = await crispSdk.getEligibleAddresses(roundId);
+          setTotalVotingPower(BigInt(data.credits) * BigInt(voters.length));
         } else if (data && data.credit_mode !== CreditsMode.CONSTANT) {
           setTotalVotingPower(undefined);
         }

@@ -1,26 +1,34 @@
-import { PUB_CHAIN, PUB_CRISP_SERVER_URL, PUB_TOKEN_ADDRESS } from "@/constants";
+import { PUB_CHAIN, PUB_CRISP_SERVER_URL, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_TOKEN_ADDRESS } from "@/constants";
 import { useState } from "react";
-import { useAccount, useSignMessage } from "wagmi";
+import { useAccount, useSignTypedData } from "wagmi";
 import { CreditsMode } from "../utils/types";
 import type { EligibleVoter, IRoundDetailsResponse, VoteData, VotingStep } from "../utils/types";
-import { encodeSolidityProof, getScaledBalance, getZeroVote } from "@crisp-e3/sdk";
+import { encodeSolidityProof, finishBallotProof, finishMaskProof, getZeroVote } from "@crisp-e3/sdk";
+import { ensureCircuits } from "../utils/circuits";
 import { iVotesAbi } from "../artifacts/iVotes";
 import { publicClient } from "../utils/client";
 import { useAlerts } from "@/context/Alerts";
+import { crispSdk } from "../utils/crispSdk";
+import { getRandomVoterToMask } from "../utils/voters";
+import {
+  CensusMode,
+  ballotTypedData,
+  getBallotDigest,
+  getCensusMode,
+  getOnchainVotingPower,
+  resolveCrispProgram,
+} from "../utils/ballotDigest";
 import { usePublishVote } from "./usePublishVote";
 import { useCommitteeKeyCheck } from "./useCommitteeKeyCheck";
-import { crispSdk } from "../utils/crispSdk";
-import { hashMessage } from "viem";
-import { getRandomVoterToMask } from "../utils/voters";
 
 /**
  * Converts the server's `committee_public_key` to bytes, or `undefined` if it is not the byte array
  * the type claims.
  *
- * `getRoundState` only CASTS the parsed JSON, so the declared `number[]` is a promise the server is
- * not held to. `new Uint8Array("...")` on a string yields an empty array rather than throwing, and
- * a array of non-numbers yields zeros — either way the caller would go on to treat junk as a key.
- * Returning `undefined` instead lets the resolver report "no server key" honestly.
+ * `getRoundStateLite` only CASTS the parsed JSON, so the declared `number[]` is a promise the server
+ * is not held to. `new Uint8Array("...")` on a string yields an empty array rather than throwing,
+ * and an array of non-numbers yields zeros — either way the caller would go on to treat junk as a
+ * key. Returning `undefined` instead lets the resolver report "no server key" honestly.
  */
 function toKeyBytes(value: unknown): Uint8Array | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined;
@@ -30,35 +38,6 @@ function toKeyBytes(value: unknown): Uint8Array | undefined {
 
   return Uint8Array.from(value as number[]);
 }
-
-/**
- * The timepoint to read the voter's power at when building a ballot.
- *
- * This must be the point the CRISP server built the census from, NOT the proposal's
- * on-chain `snapshotBlock`. The census leaf is `hash(address, scaledBalance)`, so a
- * balance read at any other timepoint hashes to a leaf that isn't in the server's
- * merkle tree and the membership proof fails.
- *
- * The two can differ in *value* (the server pins its snapshot when the round starts,
- * the contract pins `block.number - 1` at proposal creation) and in *units*: a token
- * with `CLOCK_MODE=timestamp` (EIP-6372) records a UNIX timestamp there, and calling
- * `getPastVotes` with a block number against such a token is a future lookup that
- * reverts. So the value is taken from the server, which is the authority on it, and
- * only falls back to the on-chain one when the server does not report it.
- */
-function censusSnapshot(roundState: IRoundDetailsResponse, chainSnapshot: bigint): bigint {
-  const served = roundState.snapshot_block;
-  if (served !== undefined && served !== null && served !== "") {
-    const parsed = BigInt(served);
-    if (parsed > 0n) return parsed;
-  }
-
-  return chainSnapshot;
-}
-
-export const CRISP_SERVER_STATE_LITE_ROUTE = "state/lite";
-export const CRISP_SERVER_STATE_TOKEN_HOLDERS = "state/token-holders";
-export const CRISP_SERVER_STATE_ELIGIBLE_VOTERS = "state/eligible-addresses";
 
 /**
  * State of the Crisp server
@@ -95,7 +74,11 @@ interface VoteResponse {
  * Request body for broadcasting a vote to the CRISP server
  */
 export interface BroadcastVoteRequest {
-  round_id: number;
+  /// Decimal string, not a number. E3 ids are namespaced by the Interfold address — the low 96
+  /// bits are the counter, the high 160 the contract — so they are ~1e76 and lose precision as a
+  /// JS number, reaching the server in exponential form. The server parses base-10 and answers
+  /// 400 with a message the UI never surfaces.
+  round_id: string;
   encoded_proof: string;
   address: string;
 }
@@ -122,70 +105,33 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
   const [lastActiveStep, setLastActiveStep] = useState<VotingStep | null>(null);
   const [stepMessage, setStepMessage] = useState<string>("");
 
-  const { signMessageAsync } = useSignMessage();
+  const { signTypedDataAsync } = useSignTypedData();
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [txHash, setTxHash] = useState<string | null>(null);
 
+  // All three go through the SDK (0.12.0) rather than hand-rolled fetches, so the
+  // route names and payload shapes stay owned by the SDK.
   const getRoundState = async (e3Id: bigint): Promise<IRoundDetailsResponse> => {
-    const response = await fetch(`${PUB_CRISP_SERVER_URL}/${CRISP_SERVER_STATE_LITE_ROUTE}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ round_id: Number(e3Id.toString()) }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error fetching round data: ${response.statusText}`);
-    }
-
-    const data = (await response.json()) as IRoundDetailsResponse;
-
-    return data;
+    return (await crispSdk.getRoundStateLite(e3Id)) as unknown as IRoundDetailsResponse;
   };
 
   const getTokenHoldersHashes = async (e3Id: bigint): Promise<bigint[]> => {
-    const response = await fetch(`${PUB_CRISP_SERVER_URL}/${CRISP_SERVER_STATE_TOKEN_HOLDERS}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ round_id: Number(e3Id.toString()) }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error fetching token holder hashes: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-
-    return data.map((s: string) => BigInt(`0x${s}`));
+    const hashes = await crispSdk.getTokenHolderHashes(e3Id);
+    return hashes.map((h) => BigInt(h.startsWith("0x") ? h : `0x${h}`));
   };
 
   const getEligibleVoters = async (e3Id: bigint): Promise<EligibleVoter[]> => {
-    const response = await fetch(`${PUB_CRISP_SERVER_URL}/${CRISP_SERVER_STATE_ELIGIBLE_VOTERS}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ round_id: Number(e3Id.toString()) }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error fetching eligible voters: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-
-    return data.map((v: EligibleVoter) => ({
-      address: v.address,
-      balance: Number(v.balance),
-    }));
+    const holders = await crispSdk.getEligibleAddresses(e3Id);
+    return holders.map((v) => ({ address: v.address, balance: BigInt(v.balance) }));
   };
-
-  const handleMask = async (e3Id: bigint, numOptions: string) => {
+  const handleMask = async (
+    e3Id: bigint,
+    numOptions: string,
+    /// Set for an ONCHAIN round: the program that will verify the mask.
+    crispProgram?: `0x${string}`
+  ) => {
     const eligibleVoters = await getEligibleVoters(e3Id);
 
     if (!eligibleVoters || eligibleVoters.length === 0) {
@@ -196,13 +142,19 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
 
     const zeroVote = getZeroVote(Number.parseInt(numOptions));
 
+    // A mask is still checked against public input 4, so its voting power has to be the number
+    // the contract will supply for that slot — not the balance the server recorded. The two
+    // usually coincide, because both scale by the token's decimals, but they diverge the moment a
+    // round names an explicit divisor, and a mask that got it wrong would fail in the verifier.
+    const balance = crispProgram
+      ? await getOnchainVotingPower(publicClient, crispProgram, e3Id, voter.address as `0x${string}`)
+      : voter.balance;
+
     return {
       voter,
       eligibleVoters,
-      messageHash: "",
-      signature: "",
       vote: zeroVote,
-      balance: voter.balance,
+      balance,
       slotAddress: voter.address,
     };
   };
@@ -210,30 +162,40 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
   const handleVote = async (
     e3Id: bigint,
     voteOption: bigint,
-    /** The proposal's on-chain `snapshotBlock`; only a fallback — see `censusSnapshot`. */
-    chainSnapshot: bigint,
+    blockNumber: bigint,
     numOptions: number,
-    roundState: IRoundDetailsResponse
+    roundState: IRoundDetailsResponse,
+    /// Set for an ONCHAIN round: the program that will verify the ballot, and the only authority
+    /// on how much weight the slot may spend.
+    crispProgram?: `0x${string}`
   ): Promise<VoteData> => {
-    // Step 1: Signing
-    setVotingStep("signing");
-    setLastActiveStep("signing");
-    setStepMessage("Please sign the message in your wallet...");
-
-    const message = `Vote for round ${e3Id}`;
-    const signature = await signMessageAsync({ message });
-    const messageHash = hashMessage(message);
-
+    // No signing here any more. The ballot digest commits to the ciphertext, so it does not
+    // exist until the vote has been encrypted — the wallet prompt moved into `postVote`, after
+    // `prepareBallot`. Signing a round-scoped message here would authorise any ballot for the
+    // round, which is the binding weakness the digest exists to close.
     let adjustedBalance: bigint;
 
-    if (roundState.credit_mode === CreditsMode.CONSTANT && roundState.credits) {
+    if (crispProgram) {
+      // An ONCHAIN round takes both the snapshot and the scaling from the contract, which then
+      // verifies the proof against exactly that number. Reading it here — rather than repeating
+      // the `getPastVotes` call and the `10 ** (decimals - 1)` division below — is what keeps the
+      // prover and the verifier in agreement; a one-unit difference fails the proof with nothing
+      // naming the cause.
+      adjustedBalance = await getOnchainVotingPower(publicClient, crispProgram, e3Id, address as `0x${string}`);
+    } else if (roundState.credit_mode === CreditsMode.CONSTANT && roundState.credits) {
       adjustedBalance = BigInt(roundState.credits);
     } else {
+      // The voting token is timestamp-clocked (EIP-6372, CLOCK_MODE=timestamp), so
+      // getPastVotes expects a *timestamp*, not a block number. The CRISP server snapshots
+      // voting power at `start_time - 1`; we must query the exact same point or our leaf
+      // won't match the server's merkle tree. `blockNumber` (on-chain snapshotBlock) is unused here.
+      const snapshotTimestamp = BigInt(roundState.start_time) - 1n;
+
       const balance = await publicClient.readContract({
         address: PUB_TOKEN_ADDRESS,
         abi: iVotesAbi,
         functionName: "getPastVotes",
-        args: [address as `0x${string}`, censusSnapshot(roundState, chainSnapshot)],
+        args: [address as `0x${string}`, snapshotTimestamp],
       });
 
       const decimals = await publicClient.readContract({
@@ -242,11 +204,10 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
         functionName: "decimals",
       });
 
-      // Scaling comes from the SDK rather than being reimplemented here: it is the same
-      // function the CRISP server used to build the census, so our leaf
-      // `hash(address, adjustedBalance)` can never drift out of the merkle tree.
-      // `CrispVoting._voteScale()` mirrors it on-chain for the quorum denominator.
-      adjustedBalance = getScaledBalance(balance, BigInt(decimals));
+      // Must mirror the CRISP server's scaling exactly (it keeps 1 decimal of precision:
+      // balance / 10^(decimals-1)) or our vote won't match the server's merkle leaf. It also
+      // keeps votes within the BFV per-choice encoding cap (2^33 - 1 for 3 options).
+      adjustedBalance = balance / 10n ** BigInt(decimals - 1);
     }
 
     const vote = Array.from({ length: numOptions }, (_, i) =>
@@ -254,8 +215,6 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     );
 
     return {
-      signature,
-      messageHash,
       vote,
       balance: adjustedBalance,
       slotAddress: address as string,
@@ -321,49 +280,103 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
 
       const publicKey = resolved.key;
 
+      // Resolved before the ballot is built: an ONCHAIN round takes its weight from this contract
+      // rather than from a census, so the program has to be known first.
+      const crispProgram = await resolveCrispProgram(publicClient, PUB_CRISP_VOTING_PLUGIN_ADDRESS, e3Id);
+      const censusMode = await getCensusMode(publicClient, crispProgram, e3Id);
+      const isOnchainCensus = censusMode === CensusMode.ONCHAIN;
+
       let voteData;
       if (isAMask) {
-        voteData = await handleMask(e3Id, roundState.num_options);
+        voteData = await handleMask(e3Id, roundState.num_options, isOnchainCensus ? crispProgram : undefined);
       } else {
         voteData = await handleVote(
           e3Id,
           voteOption,
           snapshotBlock,
           Number.parseInt(roundState.num_options),
-          roundState
+          roundState,
+          isOnchainCensus ? crispProgram : undefined
         );
       }
 
-      // get the merkle leaves
-      const merkleLeaves = await getTokenHoldersHashes(e3Id);
+      // An on-chain census has no tree: `publishInput` reads each voter's power from the token, so
+      // there is no holder list to fetch and no root to prove against. Asking for one would 404 —
+      // the coordinator never builds it for these rounds.
+      const merkleLeaves = isOnchainCensus ? [] : await getTokenHoldersHashes(e3Id);
 
-      // Step 2: Encrypting vote and Generating proof
+      // Step 2: Encrypt the ballot. Split from proving because the signature covers a digest that
+      // commits to this exact ciphertext, so the ballot has to exist before the voter can sign it.
       setVotingStep("generating_proof");
       setLastActiveStep("generating_proof");
-      setStepMessage("Encrypting vote and generating proof...");
+      setStepMessage("Encrypting vote...");
+
+      const ballotBase = {
+        vote: voteData.vote,
+        publicKey,
+        slotAddress: voteData.slotAddress,
+        isMaskVote: isAMask,
+        numOptions: Number.parseInt(roundState.num_options),
+      };
+
+      // The BFV circuits are preset-bound since SDK 0.18 and must be registered before any
+      // encryption or proving. Loaded lazily so the ~3MB artifacts only download when voting.
+      await ensureCircuits();
+
+      // The SDK's own prepareBallot (not the standalone one): it resolves the slot's head —
+      // previous ciphertext plus its tree index — from the server and threads the pair into the
+      // circuit inputs, which is what lets a re-vote or a mask extend the slot's existing chain.
+      const prepared = await crispSdk.prepareBallot(
+        isOnchainCensus
+          ? { e3Id, ...ballotBase, censusMode: "onchain", votingPower: voteData.balance }
+          : { e3Id, ...ballotBase, censusMode: "merkle", merkleLeaves, balance: voteData.balance }
+      );
+
+      // The digest comes from the contract that will verify the ballot, not from a struct rebuilt
+      // here. `publishInput` recomputes it and the circuit proves the signature covers it, so a
+      // local copy that drifted would produce ballots every node rejects.
+      const digest = await getBallotDigest(
+        publicClient,
+        crispProgram,
+        e3Id,
+        voteData.slotAddress as `0x${string}`,
+        prepared.ctCommitment
+      );
 
       let proof;
 
       if (isAMask) {
-        proof = await crispSdk.generateMaskVoteProof({
-          e3Id: Number(e3Id),
-          merkleLeaves,
-          slotAddress: voteData.slotAddress,
-          publicKey,
-          balance: voteData.balance,
-          numOptions: Number.parseInt(roundState.num_options),
-        });
+        // A mask carries a real digest and a placeholder signature. It must be indistinguishable
+        // from a real ballot on-chain, and it is cast for someone else's slot, so there is no key
+        // to sign with and no wallet prompt.
+        proof = await finishMaskProof(prepared, digest);
       } else {
-        proof = await crispSdk.generateVoteProof({
-          merkleLeaves,
-          publicKey,
-          balance: voteData.balance,
-          vote: voteData.vote,
-          signature: voteData.signature as `0x${string}`,
-          messageHash: voteData.messageHash as `0x${string}`,
-          e3Id: Number(e3Id),
-          slotAddress: voteData.slotAddress,
+        // Step 3: Signing, now that there is a ciphertext to bind to.
+        setVotingStep("signing");
+        setLastActiveStep("signing");
+        setStepMessage("Please sign your ballot in your wallet...");
+
+        const { domain, types } = ballotTypedData(PUB_CHAIN.id, crispProgram);
+
+        // `signTypedData`, not `signMessage`: `ballotDigest` returns an EIP-712 digest that a
+        // wallet signs directly. `signMessage` would add the EIP-191 prefix and sign a different
+        // one, and every ballot would fail looking like a bad signature.
+        const signature = await signTypedDataAsync({
+          domain,
+          types,
+          primaryType: "Ballot",
+          message: {
+            e3Id,
+            slot: voteData.slotAddress as `0x${string}`,
+            ciphertextCommitment: prepared.ctCommitment,
+          },
         });
+
+        setVotingStep("generating_proof");
+        setLastActiveStep("generating_proof");
+        setStepMessage("Generating proof...");
+
+        proof = await finishBallotProof(prepared, digest, signature);
       }
 
       const encodedProof = encodeSolidityProof(proof);
@@ -372,7 +385,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       const voteBody: BroadcastVoteRequest = {
         encoded_proof: encodedProof,
         address: address as string,
-        round_id: Number(e3Id),
+        round_id: e3Id.toString(),
       };
 
       // Step 3: Broadcasting

@@ -21,7 +21,10 @@ export const PUB_CHAIN = getChain(PUB_CHAIN_NAME);
 export const PUB_CHAIN_ID = PUB_CHAIN.id;
 
 // Network and services
-export const PUB_WEB3_ENDPOINT = process.env.NEXT_PUBLIC_WEB3_ENDPOINT ?? "";
+// The browser talks to our own /api/rpc proxy; the provider URL (and its key) lives in the
+// server-only WEB3_RPC_URL env and never reaches the client bundle.
+export const PUB_FAUCET_ADDRESS = (process.env.NEXT_PUBLIC_FAUCET_ADDRESS ?? "") as Address;
+export const PUB_WEB3_ENDPOINT = "/api/rpc/";
 
 export const PUB_WALLET_CONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID ?? "";
 

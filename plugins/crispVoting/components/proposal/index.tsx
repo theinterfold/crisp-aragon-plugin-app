@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { e3RoundNumber } from "../../utils/ballotDigest";
 import { ProposalStatus } from "@aragon/ods";
 import { PleaseWaitSpinner } from "@/components/please-wait";
 import { useProposal } from "../../hooks/useProposal";
@@ -34,7 +35,7 @@ export default function ProposalCard(props: ProposalInputs) {
   const proposalStatus = useProposalStatus(proposal!, e3Failed);
 
   const showLoading = getShowProposalLoading(proposal, proposalFetchStatus);
-  const e3Label = proposal ? `E3 · ${proposal.e3Id.toString()}` : "E3 · …";
+  const e3Label = proposal ? `E3 · ${e3RoundNumber(proposal.e3Id).toString()}` : "E3 · …";
 
   // Hide row if it doesn't match the active filter (only once status is resolved)
   if (props.statusFilter && proposal && proposalStatus !== props.statusFilter) {
