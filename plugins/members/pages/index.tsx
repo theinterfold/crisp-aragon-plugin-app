@@ -15,7 +15,9 @@ import { DelegateList } from "../components/delegateList";
 export default function Delegation() {
   const { address, isConnected } = useAccount();
   const { balance, votingPower, delegatesTo, refetch } = useTokenVotes(address);
-  const { delegate, delegateToSelf, isConfirming } = useDelegate(() => setTimeout(() => refetch(), 1000 * 2));
+  // Refetch as soon as the receipt lands — the tx manager only fires this once the transaction is
+  // confirmed on chain, so there is nothing left to wait out.
+  const { delegate, delegateToSelf, isDelegatingTo } = useDelegate(refetch);
   const [target, setTarget] = useState("");
 
   const delegatedToSelf = !!delegatesTo && !!address && delegatesTo.toLowerCase() === address.toLowerCase();
@@ -55,42 +57,48 @@ export default function Delegation() {
             />
           </Card>
 
+          {/* One box, two actions: both write the same `delegate()` call and only one can be in
+              flight at a time, so splitting them into separate cards only made it look like two
+              unrelated flows. */}
           <Card>
-            <p className="text-base font-semibold text-neutral-800">Activate your own voting power</p>
+            <p className="text-base font-semibold text-neutral-800">Delegate your voting power</p>
             <p className="text-sm text-neutral-500">
-              Delegate to yourself to vote with your tokens. Voting power applies to proposals created after you
-              delegate.
+              Your tokens carry no voting power until they are delegated — to yourself or to someone else. Delegating
+              moves no tokens and is all or nothing: your whole balance follows one address, and your balance stays in
+              your wallet. Voting power applies to proposals created after you delegate.
             </p>
-            <span>
-              <Button
-                size="md"
-                variant="primary"
-                isLoading={isConfirming}
-                disabled={delegatedToSelf}
-                onClick={() => delegateToSelf()}
-              >
-                {delegatedToSelf ? "Already self-delegated" : "Delegate to myself"}
-              </Button>
-            </span>
-          </Card>
 
-          <Card>
-            <p className="text-base font-semibold text-neutral-800">Delegate to someone else</p>
-            <p className="text-sm text-neutral-500">
-              Hand your voting power to another address. They vote on your behalf until you change it.
-            </p>
-            <InputText placeholder="0x… delegate address" value={target} onChange={(e) => setTarget(e.target.value)} />
-            <span>
-              <Button
-                size="md"
-                variant="secondary"
-                isLoading={isConfirming}
-                disabled={!targetValid}
-                onClick={() => delegate(target as Address)}
-              >
-                Delegate
-              </Button>
-            </span>
+            <div className="flex flex-col gap-y-2 pt-1">
+              <span>
+                <Button
+                  size="md"
+                  variant="primary"
+                  isLoading={isDelegatingTo(address)}
+                  disabled={delegatedToSelf}
+                  onClick={() => delegateToSelf()}
+                >
+                  {delegatedToSelf ? "Already self-delegated" : "Delegate to myself"}
+                </Button>
+              </span>
+
+              <p className="pt-2 text-sm text-neutral-500">Or hand it to another address:</p>
+              <InputText
+                placeholder="0x… delegate address"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+              />
+              <span>
+                <Button
+                  size="md"
+                  variant="secondary"
+                  isLoading={targetValid && isDelegatingTo(target as Address)}
+                  disabled={!targetValid}
+                  onClick={() => delegate(target as Address)}
+                >
+                  Delegate to this address
+                </Button>
+              </span>
+            </div>
           </Card>
 
           <Card>

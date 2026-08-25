@@ -13,7 +13,7 @@ export function DelegateList() {
   const { address } = useAccount();
   const { delegates, totalSupply, isLoading, error } = useDelegates();
   const { delegatesTo, refetch } = useTokenVotes(address);
-  const { delegate, isConfirming } = useDelegate(() => setTimeout(() => refetch(), 1000 * 2));
+  const { delegate, isDelegatingTo } = useDelegate(refetch);
   const { symbol, decimals } = useTokenMeta();
 
   if (isLoading) {
@@ -32,6 +32,12 @@ export function DelegateList() {
 
   return (
     <div className="flex flex-col">
+      {/* The figure is delegated voting power (`getVotes`), not a token balance: delegating to
+          someone raises this number without moving any tokens into their wallet. */}
+      <div className="flex items-center justify-between pb-2 text-xs text-neutral-500">
+        <span>Delegate</span>
+        <span>Voting power</span>
+      </div>
       {delegates.map((d, i) => {
         const isYou = !!address && d.address.toLowerCase() === address.toLowerCase();
         const alreadyDelegated = !!delegatesTo && delegatesTo.toLowerCase() === d.address.toLowerCase();
@@ -57,7 +63,7 @@ export function DelegateList() {
               <Button
                 size="sm"
                 variant="tertiary"
-                isLoading={isConfirming}
+                isLoading={isDelegatingTo(d.address)}
                 disabled={!address || alreadyDelegated}
                 onClick={() => delegate(d.address)}
               >

@@ -1,5 +1,4 @@
 import {
-  AlertCard,
   Button,
   IconType,
   InputText,
@@ -29,6 +28,8 @@ import { encodeActionsAsJson } from "@/utils/json-actions";
 import { CreditsMode } from "../utils/types";
 import { FeeEscrowCard } from "../components/fee/feeEscrowCard";
 import { PleaseWaitSpinner } from "@/components/please-wait";
+import { useDelegate } from "@/hooks/useDelegate";
+import Link from "next/link";
 
 export default function Create() {
   const { address: selfAddress, isConnected } = useAccount();
@@ -41,6 +42,7 @@ export default function Create() {
     hasNoTokens,
     hasNoFeeToken,
     isLoading: canCreateLoading,
+    refetch: refetchCanCreate,
   } = useCanCreateProposal();
   const [addActionType, setAddActionType] = useState<NewActionType>("");
   const {
@@ -132,6 +134,10 @@ export default function Create() {
           canCreate={canCreate}
           isConnected={isConnected}
           isLoading={canCreateLoading}
+          needsDelegation={needsDelegation}
+          hasNoTokens={hasNoTokens}
+          hasNoFeeToken={hasNoFeeToken}
+          onDelegated={refetchCanCreate}
         >
           <p className="form-intro">
             A proposal becomes <em>active</em> the moment it is mined. Voters then have the window you set to cast
@@ -311,7 +317,7 @@ export default function Create() {
                 <div className="flex flex-col gap-y-2">
                   <InputText
                     label="Credits per Voter"
-                    value={credits.toString()}
+                    value={credits ? credits.toString() : ""}
                     onChange={(e) => setCredits(Number(e.target.value) || 0)}
                     placeholder="e.g. 100"
                     readOnly={isCreating}
@@ -345,15 +351,17 @@ export default function Create() {
                       setOptionLabels(["Yes", "No", "Abstain"]);
                     } else {
                       setOptionLabels((prev) => {
+                        // Seed new slots empty, not with `Option N`: the input already shows that
+                        // as its placeholder, and a real value would just be text to delete.
+                        // Blank labels fall back to `Option N` at submit time.
                         const newLabels = [...prev];
                         while (newLabels.length < newNum) {
-                          newLabels.push(`Option ${newLabels.length + 1}`);
+                          newLabels.push("");
                         }
                         return newLabels.slice(0, newNum);
                       });
                     }
                   }}
-                  placeholder="e.g. 2"
                   disabled={isCreating}
                 />
                 <p className="text-sm font-normal leading-normal text-neutral-500">
@@ -455,26 +463,6 @@ export default function Create() {
 
           {/* Submit */}
 
-          {/* Mirror the on-chain preconditions rather than letting the user submit into a
-              revert. Each blocker explains itself and links to the fix. */}
-          {!canCreate && !canCreateLoading && (
-            <AlertCard
-              variant="critical"
-              message="You cannot create a proposal yet"
-              description={
-                // No `!isConnected` branch: PlaceHolderOr only renders these children once the
-                // wallet is connected, so that case is handled before this card ever mounts.
-                hasNoFeeToken
-                  ? "You have no Interfold fee token and no escrowed fee credit. Creating a proposal pays an E3 fee out of escrowed credit, which is topped up from your balance — use the faucet to get some."
-                  : needsDelegation
-                    ? "You hold enough tokens, but your voting power is 0 because you have never delegated. Token holders have no voting power until they delegate — go to Delegation and delegate to yourself."
-                    : hasNoTokens
-                      ? "You hold none of the voting token, so you have no voting power."
-                      : "Your delegated voting power is below the minimum required to create a proposal."
-              }
-            />
-          )}
-
           <div className="actions-row">
             <If true={canCreate || canCreateLoading}>
               <Button
@@ -503,12 +491,20 @@ const PlaceHolderOr = ({
   isConnected,
   canCreate,
   isLoading,
+  needsDelegation,
+  hasNoTokens,
+  hasNoFeeToken,
+  onDelegated,
   children,
 }: {
   selfAddress: Address | undefined;
   isConnected: boolean;
   canCreate: boolean | undefined;
   isLoading: boolean;
+  needsDelegation: boolean;
+  hasNoTokens: boolean;
+  hasNoFeeToken: boolean;
+  onDelegated: () => void;
   children: ReactNode;
 }) => {
   const { open } = useWeb3Modal();
@@ -528,13 +524,63 @@ const PlaceHolderOr = ({
       </ElseIf>
       <ElseIf true={!canCreate}>
         {/* Ineligible: this plugin gates on delegated voting power and fee funding, not membership.
-            The specific reason is spelled out by the AlertCard inside the form. */}
-        <MissingContentView>
-          You cannot create a proposal yet. Creating one requires delegated voting power above the plugin&apos;s
-          minimum, and enough of the Interfold fee token to cover the encrypted vote round.
-        </MissingContentView>
+            Spell out which of those is missing and offer the fix in place — the most common case
+            (holds tokens, never delegated) is one transaction away and needs no page change. */}
+        <CannotCreateView
+          needsDelegation={needsDelegation}
+          hasNoTokens={hasNoTokens}
+          hasNoFeeToken={hasNoFeeToken}
+          onDelegated={onDelegated}
+        />
       </ElseIf>
       <Else>{children}</Else>
     </If>
+  );
+};
+
+/**
+ * Explains the specific reason `createProposal` would revert, and — when the fix is self-delegation
+ * — performs it here rather than sending the user off to find the Delegation page.
+ */
+const CannotCreateView = ({
+  needsDelegation,
+  hasNoTokens,
+  hasNoFeeToken,
+  onDelegated,
+}: {
+  needsDelegation: boolean;
+  hasNoTokens: boolean;
+  hasNoFeeToken: boolean;
+  onDelegated: () => void;
+}) => {
+  const { address } = useAccount();
+  const { delegateToSelf, isDelegatingTo } = useDelegate(onDelegated);
+
+  if (needsDelegation) {
+    return (
+      <MissingContentView
+        callToAction="Delegate to myself"
+        isLoading={isDelegatingTo(address)}
+        onClick={() => delegateToSelf()}
+      >
+        You hold enough tokens, but your voting power is 0 because you have never delegated. Tokens carry no voting
+        power until they are delegated — delegating to yourself here is enough, and moves no tokens. You can also manage
+        this on the{" "}
+        <Link href="/plugins/delegation/#/" className="underline">
+          Delegation page
+        </Link>
+        .
+      </MissingContentView>
+    );
+  }
+
+  return (
+    <MissingContentView>
+      {hasNoFeeToken
+        ? "You have no Interfold fee token and no escrowed fee credit. Creating a proposal pays an E3 fee out of escrowed credit, topped up from your balance — use “Mint test tokens” at the top right to get some."
+        : hasNoTokens
+          ? "You hold none of the voting token, so you have no voting power. Use “Mint test tokens” at the top right, then delegate to yourself on the Delegation page."
+          : "Your delegated voting power is below the minimum required to create a proposal."}
+    </MissingContentView>
   );
 };

@@ -136,7 +136,10 @@ export function useCreateProposal() {
         summary,
         description,
         resources,
-        options: optionLabels,
+        // Option labels beyond the Yes/No(/Abstain) presets are optional in the form — the input
+        // shows `Option N` as a placeholder only. Resolve the blanks here so the ballot metadata
+        // always carries a label for every option.
+        options: optionLabels.map((label, idx) => label.trim() || `Option ${idx + 1}`),
       };
 
       const ipfsPin = await uploadToPinata(JSON.stringify(proposalMetadataJsonObject));

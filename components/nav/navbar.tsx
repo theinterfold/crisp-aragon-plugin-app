@@ -15,9 +15,13 @@ import {
   PUB_FAUCET_ADDRESS,
 } from "@/constants";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useSimulateContract } from "wagmi";
 import { iVotesAbi } from "@/plugins/crispVoting/artifacts/iVotes";
 import { useAlerts } from "@/context/Alerts";
+
+const faucetAbi = [
+  { type: "function", name: "faucet", stateMutability: "nonpayable", inputs: [], outputs: [] },
+] as const;
 
 export const Navbar: React.FC = () => {
   const [showMenu, setShowMenu] = useState(false);
@@ -60,7 +64,26 @@ export const Navbar: React.FC = () => {
   const { writeContract, isConfirming } = useTransactionManager({
     onSuccessMessage: "Tokens minted",
     onErrorMessage: "Could not mint test tokens",
+    onSuccess: () => refetchFaucet(),
   });
+
+  // The faucet reverts ("You have enough tokens") once both balances sit above their thresholds.
+  // Simulate before offering the button so a topped-up user is not sent into a guaranteed revert:
+  // the button only shows while the call would actually succeed.
+  const {
+    data: faucetSim,
+    isLoading: faucetSimLoading,
+    refetch: refetchFaucet,
+  } = useSimulateContract({
+    chainId: PUB_CHAIN.id,
+    abi: faucetAbi,
+    address: PUB_FAUCET_ADDRESS,
+    functionName: "faucet",
+    account: address,
+    query: { enabled: !!address },
+  });
+
+  const canMint = !!address && !!faucetSim;
 
   // Whole-token amounts each faucet click hands out. Scaled by the token's own
   // decimals at mint time (the fee token is 6-decimal USDC, the DAO token 18).
@@ -81,7 +104,7 @@ export const Navbar: React.FC = () => {
     // "You have enough tokens" when neither does).
     writeContract({
       chainId: PUB_CHAIN.id,
-      abi: [{ type: "function", name: "faucet", stateMutability: "nonpayable", inputs: [], outputs: [] }] as const,
+      abi: faucetAbi,
       address: PUB_FAUCET_ADDRESS,
       functionName: "faucet",
     });
@@ -108,12 +131,14 @@ export const Navbar: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-x-2">
-              <div className="shrink-0">
-                <Button className="btn-mint" onClick={mintTestTokens}>
-                  {" "}
-                  {isConfirming ? <Spinner size="sm" /> : "Mint test tokens"}{" "}
-                </Button>
-              </div>
+              {(canMint || isConfirming || (!!address && faucetSimLoading)) && (
+                <div className="shrink-0">
+                  <Button className="btn-mint" disabled={!canMint} onClick={mintTestTokens}>
+                    {" "}
+                    {isConfirming || faucetSimLoading ? <Spinner size="sm" /> : "Mint test tokens"}{" "}
+                  </Button>
+                </div>
+              )}
               <div className="shrink-0">
                 <WalletContainer />
               </div>
