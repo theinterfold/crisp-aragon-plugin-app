@@ -21,10 +21,32 @@ export const PUB_CHAIN = getChain(PUB_CHAIN_NAME);
 export const PUB_CHAIN_ID = PUB_CHAIN.id;
 
 // Network and services
-// The browser talks to our own /api/rpc proxy; the provider URL (and its key) lives in the
-// server-only WEB3_RPC_URL env and never reaches the client bundle.
 export const PUB_FAUCET_ADDRESS = (process.env.NEXT_PUBLIC_FAUCET_ADDRESS ?? "") as Address;
-export const PUB_WEB3_ENDPOINT = "/api/rpc/";
+
+/**
+ * Chain reads go to the CRISP server's read-only JSON-RPC endpoint, so this app needs no
+ * hosted-provider account of its own — the server already watches these contracts to index
+ * rounds, and it serves reads for the ones on its allowlist. Writes are unaffected: they are
+ * signed and broadcast by the user's wallet, which brings its own transport.
+ *
+ * Falls back to the local `/api/rpc/` proxy when no CRISP server is configured, which keeps
+ * `bun dev` working against a bare `WEB3_RPC_URL`.
+ */
+export const PUB_WEB3_ENDPOINT = PUB_CRISP_SERVER_URL
+  ? `${PUB_CRISP_SERVER_URL.replace(/\/$/, "")}/chain/rpc`
+  : "/api/rpc/";
+
+/**
+ * Requests per JSON-RPC batch.
+ *
+ * Must not exceed the CRISP server's `MAX_RPC_BATCH`, which is 64: the server executes a batch
+ * sequentially, so it bounds the fan-out one request can cause, and it rejects an oversized batch
+ * WHOLESALE — every call in it fails, not just the surplus. viem's `batch: true` default is 1000,
+ * which a screen resolving several reads per row clears in a single tick.
+ *
+ * A plain hosted provider has no such limit, so this only ever costs an extra round trip there.
+ */
+export const PUB_RPC_BATCH_SIZE = 64;
 
 export const PUB_WALLET_CONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID ?? "";
 

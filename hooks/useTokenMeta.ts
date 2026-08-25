@@ -19,6 +19,9 @@ export function useTokenMeta(): { symbol: string | undefined; decimals: number |
       { chainId: PUB_CHAIN.id, address: PUB_TOKEN_ADDRESS, abi: erc20Abi, functionName: "symbol" },
       { chainId: PUB_CHAIN.id, address: PUB_TOKEN_ADDRESS, abi: erc20Abi, functionName: "decimals" },
     ],
+    // Both are fixed for the life of the token, so re-reading them as the chain advances only
+    // costs requests — of every read this app makes, these are the two that can never change.
+    query: { staleTime: Infinity, gcTime: Infinity },
   });
 
   const symbol = data?.[0]?.result as string | undefined;

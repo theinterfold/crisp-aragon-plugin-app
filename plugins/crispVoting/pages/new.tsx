@@ -4,8 +4,6 @@ import {
   InputText,
   TextAreaRichText,
   Tag,
-  InputDate,
-  InputTime,
   DropdownContainer,
   DropdownItem,
   InputNumber,
@@ -14,7 +12,7 @@ import React, { type ReactNode, useState } from "react";
 import type { RawAction } from "@/utils/types";
 import { Else, ElseIf, If, Then } from "@/components/if";
 import { MainSection } from "@/components/layout/main-section";
-import { useCreateProposal } from "../hooks/useCreateProposal";
+import { DURATION_UNITS, useCreateProposal } from "../hooks/useCreateProposal";
 import { useAccount } from "wagmi";
 import { useCanCreateProposal } from "../hooks/useCanCreateProposal";
 import { MissingContentView } from "@/components/MissingContentView";
@@ -59,14 +57,11 @@ export default function Create() {
     isCreating,
     feeQuote,
     submitProposal,
-    startDate,
-    startTime,
-    endDate,
-    endTime,
-    setStartDate,
-    setStartTime,
-    setEndDate,
-    setEndTime,
+    durationValue,
+    durationUnit,
+    durationSeconds,
+    setDurationValue,
+    setDurationUnit,
     credits,
     setCredits,
     creditsMode,
@@ -77,8 +72,10 @@ export default function Create() {
     setOptionLabels,
   } = useCreateProposal();
 
-  const inputWrapperClassName =
-    "focus-within:!outline-none focus-within:!ring-0 focus-within:!border-transparent focus-within:!shadow-none focus-within:!ring-0 focus:border-[#000]";
+  // Singularised so the hint reads "1 day" rather than "1 days". Falls back to a neutral phrase
+  // while the field is empty, so the sentence never renders as "closes NaN days later".
+  const durationSummary =
+    durationSeconds > 0 ? `${durationValue} ${durationValue === 1 ? durationUnit.slice(0, -1) : durationUnit}` : "…";
 
   const handleTitleInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(event?.target?.value);
@@ -237,42 +234,29 @@ export default function Create() {
             </span>
           </div>
 
-          {/* Dates */}
-          <div className="mb-6 flex flex-row gap-x-5">
-            <div className="flex flex-1 flex-col">
-              <InputDate
-                wrapperClassName={inputWrapperClassName}
-                className="w-full"
-                label="Start date *"
-                variant="default"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+          {/* Voting duration */}
+          <div className="mb-6 flex flex-col gap-y-2">
+            <label className="text-base font-normal leading-tight text-neutral-800">Voting duration *</label>
+            <div className="flex items-start gap-x-3">
+              <InputNumber
+                className="flex-1"
+                min={1}
+                value={Number.isFinite(durationValue) ? durationValue : ""}
+                onChange={(value) => setDurationValue(parseInt(String(value ?? ""), 10))}
+                placeholder="e.g. 5"
+                disabled={isCreating}
               />
-              <InputTime
-                wrapperClassName={inputWrapperClassName}
-                className="w-full"
-                variant="default"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
+              <DropdownContainer label={durationUnit} disabled={isCreating}>
+                {DURATION_UNITS.map((unit) => (
+                  <DropdownItem key={unit} selected={durationUnit === unit} onSelect={() => setDurationUnit(unit)}>
+                    {unit}
+                  </DropdownItem>
+                ))}
+              </DropdownContainer>
             </div>
-            <div className="flex flex-1 flex-col">
-              <InputDate
-                wrapperClassName={inputWrapperClassName}
-                className="w-full"
-                label="End date *"
-                variant="default"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-              <InputTime
-                wrapperClassName={inputWrapperClassName}
-                className="w-full"
-                variant="default"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
+            <p className="text-sm font-normal leading-normal text-neutral-500">
+              Voting opens as soon as the proposal is created, and closes {durationSummary} later.
+            </p>
           </div>
 
           {/** CRISP Configuration */}

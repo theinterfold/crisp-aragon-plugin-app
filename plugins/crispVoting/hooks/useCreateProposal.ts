@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 import { useMemo, useState } from "react";
 import type { ProposalMetadata, RawAction } from "@/utils/types";
 import { useAlerts } from "@/context/Alerts";
-import { PUB_APP_NAME, PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_PROJECT_URL } from "@/constants";
+import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS } from "@/constants";
 import { uploadToPinata } from "@/utils/ipfs";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { URL_PATTERN } from "@/utils/input-values";
@@ -16,21 +16,45 @@ import { useProposalFeeQuote } from "./useProposalFeeQuote";
 
 const UrlRegex = new RegExp(URL_PATTERN);
 
+/** Units a voting window may be expressed in. Minutes are kept for testnet rounds. */
+export const DURATION_UNITS = ["minutes", "hours", "days"] as const;
+
+export type DurationUnit = (typeof DURATION_UNITS)[number];
+
+export const DURATION_UNIT_SECONDS: Record<DurationUnit, number> = {
+  minutes: 60,
+  hours: 60 * 60,
+  days: 24 * 60 * 60,
+};
+
 export function useCreateProposal() {
   const { push } = useRouter();
   const { addAlert } = useAlerts();
   const [isCreating, setIsCreating] = useState(false);
-  const [title, setTitle] = useState<string>("A new proposal");
-  const [summary, setSummary] = useState<string>("The summary");
-  const [description, setDescription] = useState<string>("The description");
+  // Empty, not seeded with sample text. Every one of these inputs already shows the same guidance
+  // as a placeholder, so a real value added nothing except work: the first thing anyone did was
+  // select it and delete it, and text left in by accident got published as the proposal's actual
+  // title. Blank also makes the "please enter a title" checks below reachable — prefilled fields
+  // meant they could never fire.
+  const [title, setTitle] = useState<string>("");
+  const [summary, setSummary] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
   const [actions, setActions] = useState<RawAction[]>([]);
-  const [resources, setResources] = useState<{ name: string; url: string }[]>([
-    { name: PUB_APP_NAME, url: PUB_PROJECT_URL },
-  ]);
-  const [startDate, setStartDate] = useState<string>("");
-  const [startTime, setStartTime] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
-  const [endTime, setEndTime] = useState<string>("");
+  // No resources by default. They are optional, but the validation below requires a name AND a
+  // valid URL for every row that EXISTS — so a blank starter row could not be left alone, it had
+  // to be filled in or removed. The form already renders an empty state and an "Add resource"
+  // button, which is the honest way to offer something optional.
+  const [resources, setResources] = useState<{ name: string; url: string }[]>([]);
+  // A duration, not a pair of absolute dates.
+  //
+  // Voting always starts when the proposal is created (the contract reads a `_startDate` of 0 as
+  // `block.timestamp`), so a start field could only ever say "now" or schedule a vote for later —
+  // and scheduling was never the intent. Asking for a duration also removes a whole class of bug:
+  // an absolute end date picked before an IPFS upload and a funding transaction could be in the
+  // past by the time the create transaction landed, whereas a duration is resolved against the
+  // clock at submit.
+  const [durationValue, setDurationValue] = useState<number>(1);
+  const [durationUnit, setDurationUnit] = useState<DurationUnit>("days");
 
   const [numOptions, setNumOptions] = useState<number>(2);
   const [creditsMode, setCreditsMode] = useState<CreditsMode>(CreditsMode.CUSTOM);
@@ -57,14 +81,9 @@ export function useCreateProposal() {
   // The dates and ballot encoding are derived here rather than inside `submitProposal` so the fee
   // quote below is computed from EXACTLY the bytes the transaction will send. A second, separate
   // encoding for display purposes could quote one price and charge another.
-  const startDateTime = useMemo(
-    () => Math.floor(new Date(`${startDate}T${startTime ? startTime : "00:00:00"}`).getTime() / 1000),
-    [startDate, startTime]
-  );
-
-  const endDateTime = useMemo(
-    () => Math.floor(new Date(`${endDate}T${endTime ? endTime : "00:00:00"}`).getTime() / 1000),
-    [endDate, endTime]
+  const durationSeconds = useMemo(
+    () => (Number.isFinite(durationValue) ? Math.trunc(durationValue) * DURATION_UNIT_SECONDS[durationUnit] : 0),
+    [durationValue, durationUnit]
   );
 
   // This runs during render, so it must not throw on a half-filled form: an empty number input
@@ -81,13 +100,17 @@ export function useCreateProposal() {
     [numOptions, creditsMode, credits]
   );
 
-  // Quote against the same normalisation `submitProposal` applies, so the figure on screen is the
-  // one the transaction pays. A start date already in the past is sent as 0 ("start now").
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const quotedStartDate = Number.isFinite(startDateTime) && startDateTime > nowSeconds ? startDateTime : 0;
-  const quotedEndDate = Number.isFinite(endDateTime) ? endDateTime : 0;
+  // Quote against the same shape `submitProposal` sends: start 0 ("start now"), end = now +
+  // duration.
+  //
+  // `now` is rounded down to the minute rather than read raw. A value that changed on every
+  // render would hand the quote hook a new key each time and refetch it in a loop; a minute-
+  // resolution bucket is stable enough to hold still and close enough for a fee that scales with
+  // window length.
+  const nowBucket = Math.floor(Date.now() / 60_000) * 60;
+  const quotedEndDate = durationSeconds > 0 ? nowBucket + durationSeconds : 0;
 
-  const feeQuote = useProposalFeeQuote(quotedStartDate, quotedEndDate, data);
+  const feeQuote = useProposalFeeQuote(0, quotedEndDate, data);
 
   const submitProposal = async () => {
     // Check metadata
@@ -105,12 +128,12 @@ export function useCreateProposal() {
       });
     }
 
-    // The end date is required: the contract's `_endDate = 0` shorthand means "the earliest date
+    // A duration is required: the contract's `_endDate = 0` shorthand means "the earliest date
     // minDuration allows", which for a plugin configured with minDuration 0 is a vote that closes
-    // in the same block. Demand an explicit, future date rather than silently creating one.
-    if (!Number.isFinite(endDateTime) || endDateTime <= Math.floor(Date.now() / 1000)) {
-      return addAlert("Invalid proposal dates", {
-        description: "Please set an end date in the future",
+    // in the same block. Demand an explicit window rather than silently creating one.
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      return addAlert("Invalid voting duration", {
+        description: "Please set how long voting should stay open",
         type: "error",
       });
     }
@@ -144,18 +167,16 @@ export function useCreateProposal() {
 
       const ipfsPin = await uploadToPinata(JSON.stringify(proposalMetadataJsonObject));
 
-      // `startDateTime` was computed before the IPFS upload and possible funding transactions,
-      // which together can take longer than the start delay. The contract reverts with
-      // `DateOutOfBounds` if the start is even a second in the past, so re-check it here and
-      // fall back to 0 — which the contract reads as "start at block.timestamp" — rather than
-      // sending a stale timestamp that is guaranteed to revert.
+      // The end is resolved HERE, against the clock at send time, not when the form was filled in.
+      // The IPFS upload and any funding transaction above can take a while, and an absolute end
+      // date chosen before them could already be in the past by now — which the contract rejects
+      // with `DateOutOfBounds`. A duration cannot go stale that way.
+      //
+      // Start is always 0: the contract reads that as `block.timestamp`, so the window opens when
+      // the transaction lands rather than at a timestamp that has to be guessed ahead of it.
       const buildArgs = () => {
-        const now = Math.floor(Date.now() / 1000);
-        // An empty date field parses to NaN, and `NaN <= now` is false — so a bare comparison
-        // would pass NaN straight through to viem, which cannot encode it as `uint64`. Anything
-        // missing or already past becomes 0, which the contract reads as "start at block.timestamp".
-        const safeStartDateTime = Number.isFinite(startDateTime) && startDateTime > now ? startDateTime : 0;
-        return [toHex(ipfsPin), actions, BigInt(safeStartDateTime), BigInt(endDateTime), data] as const;
+        const endDateTime = Math.floor(Date.now() / 1000) + durationSeconds;
+        return [toHex(ipfsPin), actions, 0n, BigInt(endDateTime), data] as const;
       };
 
       // The plugin debits escrowed credit rather than pulling the fee from the caller, so the
@@ -226,14 +247,11 @@ export function useCreateProposal() {
     setActions,
     setResources,
     submitProposal,
-    startDate,
-    startTime,
-    endDate,
-    endTime,
-    setStartDate,
-    setStartTime,
-    setEndDate,
-    setEndTime,
+    durationValue,
+    durationUnit,
+    durationSeconds,
+    setDurationValue,
+    setDurationUnit,
     credits,
     setCredits,
     creditsMode,

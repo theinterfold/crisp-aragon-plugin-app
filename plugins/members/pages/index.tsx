@@ -15,9 +15,15 @@ import { DelegateList } from "../components/delegateList";
 export default function Delegation() {
   const { address, isConnected } = useAccount();
   const { balance, votingPower, delegatesTo, refetch } = useTokenVotes(address);
-  // Refetch as soon as the receipt lands — the tx manager only fires this once the transaction is
-  // confirmed on chain, so there is nothing left to wait out.
-  const { delegate, delegateToSelf, isDelegatingTo } = useDelegate(refetch);
+  // Delegating from here changes the directory below too, so both are refreshed. Delayed because
+  // the node answering the reads may not have the receipt's block yet.
+  const [delegateListRefreshKey, setDelegateListRefreshKey] = useState(0);
+  const { delegate, delegateToSelf, isDelegatingTo } = useDelegate(() =>
+    setTimeout(() => {
+      refetch();
+      setDelegateListRefreshKey((k) => k + 1);
+    }, 1000 * 2)
+  );
   const [target, setTarget] = useState("");
 
   const delegatedToSelf = !!delegatesTo && !!address && delegatesTo.toLowerCase() === address.toLowerCase();
@@ -106,7 +112,7 @@ export default function Delegation() {
             <p className="text-sm text-neutral-500">
               Addresses with active voting power. Delegate your power to any of them.
             </p>
-            <DelegateList />
+            <DelegateList refreshKey={delegateListRefreshKey} />
           </Card>
         </div>
       )}

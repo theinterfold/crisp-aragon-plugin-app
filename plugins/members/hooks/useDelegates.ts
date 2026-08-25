@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePublicClient } from "wagmi";
 import { erc20Abi, parseAbiItem, type Address } from "viem";
 import { iVotesAbi } from "@/plugins/crispVoting/artifacts/iVotes";
@@ -30,6 +30,12 @@ export function useDelegates() {
   const [totalSupply, setTotalSupply] = useState<bigint>(0n);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bumped to re-run the scan. Delegating changes both the SET of delegates (the target may be
+  // new) and everyone's voting power, and neither is derivable from what is already on screen.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const hasLoadedOnce = useRef(false);
+
+  const refetch = useCallback(() => setReloadNonce((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +43,10 @@ export function useDelegates() {
     async function run() {
       if (!publicClient) return;
       try {
-        setIsLoading(true);
+        // The spinner replaces the whole list, which is the right thing on first paint and the
+        // wrong thing on a refresh triggered by delegating — the list would vanish and reappear.
+        // Keep the stale rows visible while the new ones are fetched.
+        if (!hasLoadedOnce.current) setIsLoading(true);
         setError(null);
 
         // Falling back to block 0 would scan the entire chain in 9k-block steps — thousands of
@@ -128,6 +137,7 @@ export function useDelegates() {
 
         setTotalSupply(supply);
         setDelegates(entries);
+        hasLoadedOnce.current = true;
       } catch {
         if (!cancelled) setError("Could not load delegates");
       } finally {
@@ -139,7 +149,7 @@ export function useDelegates() {
     return () => {
       cancelled = true;
     };
-  }, [publicClient]);
+  }, [publicClient, reloadNonce]);
 
-  return { delegates, totalSupply, isLoading, error };
+  return { delegates, totalSupply, isLoading, error, refetch };
 }

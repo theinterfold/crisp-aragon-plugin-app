@@ -1,4 +1,4 @@
-import { PUB_CHAIN, PUB_WEB3_ENDPOINT } from "@/constants";
+import { PUB_CHAIN } from "@/constants";
 import { formatHexString } from "@/utils/evm";
 import { MemberAvatar } from "@aragon/ods";
 import { useWeb3Modal } from "@web3modal/wagmi/react";
@@ -15,7 +15,10 @@ const config = createConfig({
   client({ chain }) {
     return createClient({
       chain,
-      transport: http(PUB_WEB3_ENDPOINT, { batch: true }),
+      // ENS lives on mainnet, so it cannot come from the chain endpoint above (which points at
+      // this deployment's chain). viem's default mainnet transport needs no key and a failed
+      // name lookup only costs us a raw address in the UI.
+      transport: http(undefined, { batch: true }),
     });
   },
 });

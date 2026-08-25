@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { formatUnits } from "viem";
 import { useTokenMeta } from "@/hooks/useTokenMeta";
 import { useAccount } from "wagmi";
@@ -9,12 +10,39 @@ import { useTokenVotes } from "@/hooks/useTokenVotes";
 import { useDelegate } from "@/hooks/useDelegate";
 import { useDelegates } from "../hooks/useDelegates";
 
-export function DelegateList() {
+/**
+ * @param refreshKey - bump to re-scan the directory. The page above holds its own delegate button,
+ *   and this component owns the only copy of the voting-power figures, so a delegation made up
+ *   there has to reach down here or the table silently keeps showing pre-delegation numbers.
+ */
+export function DelegateList({ refreshKey = 0 }: { refreshKey?: number }) {
   const { address } = useAccount();
-  const { delegates, totalSupply, isLoading, error } = useDelegates();
-  const { delegatesTo, refetch } = useTokenVotes(address);
-  const { delegate, isDelegatingTo } = useDelegate(refetch);
+  const { delegates, totalSupply, isLoading, error, refetch: refetchDelegates } = useDelegates();
+  const { delegatesTo, refetch: refetchMyVotes } = useTokenVotes(address);
+
+  // BOTH have to be refreshed after delegating, and only the first one used to be. `delegatesTo`
+  // drives the "Delegated" label on the button, while every voting-power figure in the table comes
+  // from `useDelegates` — so refreshing just the former flipped the label while the numbers stayed
+  // frozen at their pre-delegation values: your power still counted as yours, and the address you
+  // delegated to never gained it.
+  // Delayed rather than immediate: the node answering the refetch may not have the block the
+  // receipt came from yet, and re-reading too early just re-reads the pre-delegation state. This
+  // matters more when reads go through the CRISP server, which serves a head cached for a few
+  // seconds — an instant refetch can be pinned to the block before the delegation landed.
+  const onDelegated = () =>
+    setTimeout(() => {
+      refetchMyVotes();
+      refetchDelegates();
+    }, 1000 * 2);
+
+  const { delegate, isDelegatingTo } = useDelegate(onDelegated);
   const { symbol, decimals } = useTokenMeta();
+
+  // Skipped on mount: the hook already scans once on its own, and re-running it here would make
+  // every page load pay for the directory twice.
+  useEffect(() => {
+    if (refreshKey > 0) refetchDelegates();
+  }, [refreshKey, refetchDelegates]);
 
   if (isLoading) {
     return (
