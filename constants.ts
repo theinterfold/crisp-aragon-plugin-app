@@ -24,17 +24,37 @@ export const PUB_CHAIN_ID = PUB_CHAIN.id;
 export const PUB_FAUCET_ADDRESS = (process.env.NEXT_PUBLIC_FAUCET_ADDRESS ?? "") as Address;
 
 /**
- * Chain reads go to the CRISP server's read-only JSON-RPC endpoint, so this app needs no
- * hosted-provider account of its own — the server already watches these contracts to index
- * rounds, and it serves reads for the ones on its allowlist. Writes are unaffected: they are
- * signed and broadcast by the user's wallet, which brings its own transport.
+ * Whether chain reads go to the CRISP server's read-only JSON-RPC endpoint.
  *
- * Falls back to the local `/api/rpc/` proxy when no CRISP server is configured, which keeps
- * `bun dev` working against a bare `WEB3_RPC_URL`.
+ * OFF by default. The endpoint allowlists by address, and the account-scoped reads a wallet needs
+ * before it will sign — `eth_getTransactionCount`, `eth_getBalance`, `eth_getCode` on the signer —
+ * name an EOA, which can never be on a list of watched contracts. Every one of them is refused
+ * with `-32602`, which surfaces as "Invalid parameters were provided to the RPC method" and takes
+ * every transaction in the app down with it. Until the server serves those, the default has to be
+ * a plain provider.
+ *
+ * Set `NEXT_PUBLIC_USE_CRISP_RPC=true` to opt back in once it does.
  */
-export const PUB_WEB3_ENDPOINT = PUB_CRISP_SERVER_URL
-  ? `${PUB_CRISP_SERVER_URL.replace(/\/$/, "")}/chain/rpc`
-  : "/api/rpc/";
+export const PUB_USE_CRISP_RPC = (process.env.NEXT_PUBLIC_USE_CRISP_RPC ?? "") === "true";
+
+/**
+ * Explicit override for the chain transport.
+ *
+ * Set `NEXT_PUBLIC_WEB3_RPC_URL` to point every viem transport at a specific provider. Left blank,
+ * reads go through this app's own `/api/rpc` proxy, which forwards to the server-only
+ * `WEB3_RPC_URL` so the provider key never reaches the bundle.
+ */
+export const PUB_WEB3_RPC_OVERRIDE = process.env.NEXT_PUBLIC_WEB3_RPC_URL ?? "";
+
+/**
+ * Where viem sends chain reads.
+ *
+ * The CRISP server is still used for everything else it owns — rounds, key material, vote
+ * broadcast — regardless of what this resolves to. Only the JSON-RPC transport moves.
+ */
+export const PUB_WEB3_ENDPOINT =
+  PUB_WEB3_RPC_OVERRIDE ||
+  (PUB_USE_CRISP_RPC && PUB_CRISP_SERVER_URL ? `${PUB_CRISP_SERVER_URL.replace(/\/$/, "")}/chain/rpc` : "/api/rpc/");
 
 /**
  * Requests per JSON-RPC batch.
