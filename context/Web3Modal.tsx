@@ -1,4 +1,4 @@
-import { http, createConfig } from "wagmi";
+import { createConfig, http } from "wagmi";
 import { walletConnect } from "wagmi/connectors";
 import {
   PUB_APP_DESCRIPTION,

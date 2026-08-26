@@ -7,6 +7,9 @@ import { useTransactionManager } from "@/hooks/useTransactionManager";
 import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
 import { describeFailure } from "../utils/describeFailure";
 
+/** The two things this hook can be doing. */
+export type FeeEscrowAction = "deposit" | "withdraw";
+
 export type FeeEscrow = {
   /** Fee-token credit escrowed in the plugin for this account (`feeCredits`). */
   credit?: bigint;
@@ -17,8 +20,13 @@ export type FeeEscrow = {
   symbol?: string;
   decimals?: number;
   isLoading: boolean;
-  /** A deposit or withdrawal is in flight. */
+  /** A deposit or withdrawal is in flight. Use it to disable BOTH actions — starting a withdrawal
+   *  mid-deposit would race two transactions against the same credit balance. */
   isBusy: boolean;
+  /** WHICH action is in flight, so only that button shows a spinner. A single boolean put the
+   *  withdraw button into loading while a deposit was running, which reads as "your withdrawal is
+   *  being processed" when nothing of the sort is happening. */
+  busy?: FeeEscrowAction;
   /** Why the last deposit or withdrawal failed, if it did. */
   error?: string;
   /** Escrows `amount` of the fee token, approving first when the allowance is short. */
@@ -40,7 +48,7 @@ export type FeeEscrow = {
 export function useFeeEscrow(): FeeEscrow {
   const { address } = useAccount();
   const client = usePublicClient();
-  const [isBusy, setIsBusy] = useState(false);
+  const [busy, setBusy] = useState<FeeEscrowAction | undefined>(undefined);
   // Both actions can throw where `useTransactionManager` never sees it — the client guard fires
   // before any transaction is sent, and a reverted receipt is caught by `awaitSuccessfulReceipt`
   // rather than by wagmi. The card discards these promises, so an uncaught throw is an unhandled
@@ -127,7 +135,7 @@ export function useFeeEscrow(): FeeEscrow {
     setError(undefined);
 
     try {
-      setIsBusy(true);
+      setBusy("deposit");
       const publicClient = requireClient();
       await ensureAllowance(amount);
 
@@ -144,7 +152,7 @@ export function useFeeEscrow(): FeeEscrow {
       setError(describeFailure(err, "The deposit could not be completed"));
       await refetchReads();
     } finally {
-      setIsBusy(false);
+      setBusy(undefined);
     }
   };
 
@@ -154,7 +162,7 @@ export function useFeeEscrow(): FeeEscrow {
     setError(undefined);
 
     try {
-      setIsBusy(true);
+      setBusy("withdraw");
       const publicClient = requireClient();
       const hash = await withdrawWrite({
         chainId: PUB_CHAIN.id,
@@ -169,7 +177,7 @@ export function useFeeEscrow(): FeeEscrow {
       setError(describeFailure(err, "The withdrawal could not be completed"));
       await refetchReads();
     } finally {
-      setIsBusy(false);
+      setBusy(undefined);
     }
   };
 
@@ -214,7 +222,8 @@ export function useFeeEscrow(): FeeEscrow {
     symbol: data?.[3]?.result as string | undefined,
     decimals: decimals === undefined ? undefined : Number(decimals),
     isLoading: Boolean(address) && isLoading,
-    isBusy,
+    isBusy: busy !== undefined,
+    busy,
     error,
     deposit,
     withdraw,

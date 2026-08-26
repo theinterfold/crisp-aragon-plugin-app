@@ -70,11 +70,7 @@ export const Navbar: React.FC = () => {
   // The faucet reverts ("You have enough tokens") once both balances sit above their thresholds.
   // Simulate before offering the button so a topped-up user is not sent into a guaranteed revert:
   // the button only shows while the call would actually succeed.
-  const {
-    data: faucetSim,
-    isLoading: faucetSimLoading,
-    refetch: refetchFaucet,
-  } = useSimulateContract({
+  const { data: faucetSim, refetch: refetchFaucet } = useSimulateContract({
     chainId: PUB_CHAIN.id,
     abi: faucetAbi,
     address: PUB_FAUCET_ADDRESS,
@@ -131,11 +127,19 @@ export const Navbar: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-x-2">
-              {(canMint || isConfirming || (!!address && faucetSimLoading)) && (
+              {/* Absent until the faucet would actually succeed, rather than present-and-spinning
+                  while we find out. A control that appears as a spinner has already made a promise
+                  about what it will become, and for a topped-up account the answer is "nothing" —
+                  so it sat there loading and then vanished. `isConfirming` keeps it on screen
+                  through the caller's own click, which is the one moment a spinner is the honest
+                  thing to show. */}
+              {(canMint || isConfirming) && (
                 <div className="shrink-0">
-                  <Button className="btn-mint" disabled={!canMint} onClick={mintTestTokens}>
-                    {" "}
-                    {isConfirming || faucetSimLoading ? <Spinner size="sm" /> : "Mint test tokens"}{" "}
+                  {/* Disabled while confirming too: `faucetSim` still holds the pre-mint result
+                      until the refetch lands, so the button stayed clickable and would happily
+                      send a second, reverting mint. */}
+                  <Button className="btn-mint" disabled={!canMint || isConfirming} onClick={mintTestTokens}>
+                    {isConfirming ? <Spinner size="sm" /> : "Mint test tokens"}
                   </Button>
                 </div>
               )}

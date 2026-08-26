@@ -22,7 +22,8 @@ function formatAmount(value: bigint, decimals: number): string {
  * button carries the precise shortfall and the withdraw button returns the whole remaining credit.
  */
 export const FeeEscrowCard = ({ quote }: { quote?: ProposalFeeQuote }) => {
-  const { credit, balance, symbol, decimals, isLoading, isBusy, error, deposit, withdraw, refetch } = useFeeEscrow();
+  const { credit, balance, symbol, decimals, isLoading, isBusy, busy, error, deposit, withdraw, refetch } =
+    useFeeEscrow();
 
   if (isLoading) {
     return <PleaseWaitSpinner fullMessage="Loading the fee credit" />;
@@ -124,8 +125,10 @@ export const FeeEscrowCard = ({ quote }: { quote?: ProposalFeeQuote }) => {
           <Button
             size="md"
             variant="primary"
+            // Disabled while EITHER action runs, but only spinning for its own: a shared flag put
+            // this button and the withdraw one into loading together.
             disabled={shortOnBalance || isBusy}
-            isLoading={isBusy}
+            isLoading={busy === "deposit"}
             onClick={() => void deposit(shortfall)}
           >
             Deposit {formatAmount(shortfall, decimals)} {ticker}
@@ -137,7 +140,7 @@ export const FeeEscrowCard = ({ quote }: { quote?: ProposalFeeQuote }) => {
             size="md"
             variant="tertiary"
             disabled={isBusy}
-            isLoading={isBusy}
+            isLoading={busy === "withdraw"}
             onClick={() => void withdraw(credit as bigint)}
           >
             Withdraw {formatAmount(credit as bigint, decimals)} {ticker}

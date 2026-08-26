@@ -15,9 +15,12 @@ interface ProposalHeaderProps {
   proposalIdx: bigint;
   proposal: Proposal;
   e3Failed?: boolean;
+  /** Whether the ciphernode committee has published its key. Until it has, a ballot cannot be
+   *  encrypted, so the round is open on chain but not votable. */
+  isCommitteeReady?: boolean;
 }
 
-const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, e3Failed }) => {
+const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, e3Failed, isCommitteeReady }) => {
   const proposalStatus = useProposalStatus(proposal, e3Failed);
   const countdown = useCountdown(Number(proposal.parameters.endDate) * 1000);
 
@@ -30,6 +33,11 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, 
   else if (proposalStatus === ProposalStatus.ACCEPTED) endLabel = "Accepted";
   else if (proposalStatus === ProposalStatus.REJECTED) endLabel = "Rejected";
   else if (endDateIsInThePast) endLabel = "Voting closed";
+  // A countdown is a promise that there is something to do before it runs out. Until the
+  // committee publishes its key there is no key to encrypt a ballot against, so the round is open
+  // on chain and unvotable in practice — and the vote panel below already says so. Checked after
+  // the closed cases: a finished round is not "forming", it is over.
+  else if (!isCommitteeReady) endLabel = "Forming committee";
   else endLabel = `Ends in ${countdown}`;
 
   return (

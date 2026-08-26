@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useBlockNumber, useReadContract } from "wagmi";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN_ID, PUB_CRISP_SERVER_URL, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
+import { fetchProposalsFromServer } from "../utils/proposalsApi";
 import { useMetadata } from "@/hooks/useMetadata";
 import { getAbiItem, fromHex } from "viem";
 import { publicClient } from "../utils/client";
@@ -133,26 +134,44 @@ export function useProposal(proposalId: bigint) {
   useEffect(() => {
     if (!snapshotBlock || !publicClient || creationEvent) return;
 
-    publicClient
-      .getLogs({
-        address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-        event: ProposalCreatedEvent,
-        args: { proposalId },
-        // Use the plugin deployment block, not snapshotBlock: for proposals whose
-        // voting starts in the future, snapshotBlock is a block that hasn't been
-        // mined yet, so the ProposalCreated event would fall outside the range.
-        fromBlock: BigInt(PUB_DEPLOYMENT_BLOCK),
-      })
-      .then((logs) => {
+    void (async () => {
+      // One request to the server, which already holds this plugin's log history, instead of a
+      // scan from the deployment block per proposal page. Falls back to the scan when it cannot
+      // answer.
+      const fromServer = await fetchProposalsFromServer(proposalId);
+      const match = fromServer?.[0];
+      if (match) {
+        setCreationEvent({
+          proposalId,
+          creator: match.creator as Hex,
+          startDate: BigInt(match.start_date),
+          endDate: BigInt(match.end_date),
+          metadata: match.metadata,
+        } as unknown as ProposalCreatedLogResponse["args"]);
+        setMetadataUri(fromHex(match.metadata, "string"));
+        return;
+      }
+
+      try {
+        const logs = await publicClient.getLogs({
+          address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+          event: ProposalCreatedEvent,
+          args: { proposalId },
+          // Use the plugin deployment block, not snapshotBlock: for proposals whose
+          // voting starts in the future, snapshotBlock is a block that hasn't been
+          // mined yet, so the ProposalCreated event would fall outside the range.
+          fromBlock: BigInt(PUB_DEPLOYMENT_BLOCK),
+        });
+
         if (!logs?.length) return;
 
         const log = logs[0] as unknown as { args: ProposalCreatedLogResponse["args"] };
         setCreationEvent(log.args);
         setMetadataUri(fromHex(log.args.metadata as Hex, "string"));
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error("Could not fetch proposal creation event", err);
-      });
+      }
+    })();
     // `blockNumber` is included so the lookup retries on each new block until the
     // ProposalCreated event is indexed by the RPC (it may lag right after creation).
   }, [proposalId, snapshotBlock, creationEvent, blockNumber]);

@@ -92,7 +92,12 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
 
   return (
     <section className="flex w-screen min-w-full max-w-full flex-col items-center">
-      <ProposalHeader proposalIdx={proposalIdx} proposal={proposal} e3Failed={e3Failed} />
+      <ProposalHeader
+        proposalIdx={proposalIdx}
+        proposal={proposal}
+        e3Failed={e3Failed}
+        isCommitteeReady={isCommitteeReady}
+      />
 
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:px-16 md:pb-20 md:pt-10">
         <div className="flex w-full flex-col gap-x-12 gap-y-6 md:flex-row">

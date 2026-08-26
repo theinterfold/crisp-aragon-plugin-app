@@ -26,31 +26,38 @@ export const PUB_FAUCET_ADDRESS = (process.env.NEXT_PUBLIC_FAUCET_ADDRESS ?? "")
 /**
  * Whether chain reads go to the CRISP server's read-only JSON-RPC endpoint.
  *
- * OFF by default. The endpoint allowlists by address, and the account-scoped reads a wallet needs
- * before it will sign — `eth_getTransactionCount`, `eth_getBalance`, `eth_getCode` on the signer —
- * name an EOA, which can never be on a list of watched contracts. Every one of them is refused
- * with `-32602`, which surfaces as "Invalid parameters were provided to the RPC method" and takes
- * every transaction in the app down with it. Until the server serves those, the default has to be
- * a plain provider.
- *
- * Set `NEXT_PUBLIC_USE_CRISP_RPC=true` to opt back in once it does.
+ * ON by default when a server is configured. It was briefly off, because the endpoint's allowlist
+ * refused the account-scoped reads a wallet needs before it will sign (`eth_getTransactionCount`,
+ * `eth_getBalance`, `eth_getCode` on the signer) and took every transaction down with it. Those
+ * are served now, `aggregate3` is decoded to its inner targets, and the reads are rate limited
+ * per caller — so the server is once again the right transport, and the only one whose provider
+ * key stays off the client.
  */
-export const PUB_USE_CRISP_RPC = (process.env.NEXT_PUBLIC_USE_CRISP_RPC ?? "") === "true";
+export const PUB_USE_CRISP_RPC = (process.env.NEXT_PUBLIC_USE_CRISP_RPC ?? "true") !== "false";
 
 /**
  * Explicit override for the chain transport.
  *
- * Set `NEXT_PUBLIC_WEB3_RPC_URL` to point every viem transport at a specific provider. Left blank,
- * reads go through this app's own `/api/rpc` proxy, which forwards to the server-only
- * `WEB3_RPC_URL` so the provider key never reaches the bundle.
+ * `/api/rpc/` proxies the server-only `WEB3_RPC_URL`, which is the right choice for local
+ * development — but NOT for the current deployment, where a Cloudflare rule answers
+ * `POST /api/rpc` with a 502 before it ever reaches Next.
+ *
+ * Whatever you point this at, verify it returns COMPLETE `eth_getLogs` results first. The default
+ * was briefly `ethereum-sepolia-rpc.publicnode.com`, which silently omits logs it does not hold:
+ * a 100-block query for a proposal's `ProposalCreated` returned nothing while the same query to a
+ * keyed provider returned it. It does not error, it just answers short — so the proposal list and
+ * the delegate directory would quietly render an incomplete set, and viem's `fallback` would
+ * never fail over, because nothing failed.
  */
 export const PUB_WEB3_RPC_OVERRIDE = process.env.NEXT_PUBLIC_WEB3_RPC_URL ?? "";
 
 /**
  * Where viem sends chain reads.
  *
- * The CRISP server is still used for everything else it owns — rounds, key material, vote
- * broadcast — regardless of what this resolves to. Only the JSON-RPC transport moves.
+ * Deliberately a single transport rather than a `fallback` list. A second leg only helps when the
+ * first one ERRORS, and the failure mode that actually bit here was a provider answering
+ * confidently with less data than it should have. A wrong answer nobody can detect is worse than
+ * an outage everybody can.
  */
 export const PUB_WEB3_ENDPOINT =
   PUB_WEB3_RPC_OVERRIDE ||

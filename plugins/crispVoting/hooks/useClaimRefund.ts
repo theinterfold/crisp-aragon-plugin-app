@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { parseAbi, parseAbiItem, type Address } from "viem";
 import { CrispVotingAbi } from "../artifacts/CrispVoting";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
+import { fetchProposalsFromServer } from "../utils/proposalsApi";
 import { useTransactionManager } from "@/hooks/useTransactionManager";
 import { awaitSuccessfulReceipt } from "../utils/awaitReceipt";
 import { isRefundQueryStale } from "../utils/refundQuery";
@@ -131,6 +132,16 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
       isRefundQueryStale(query, { latestId: latestQuery.current, activeProposalId: activeProposalId.current });
 
     try {
+      // The server resolves this from the same `RefundClaimed` history it already indexes, as a
+      // flag on the proposal — one request instead of a scan from the deployment block per card.
+      const fromServer = await fetchProposalsFromServer(proposalId, ["refund_claimed"]);
+      const claimed = fromServer?.[0]?.refund_claimed;
+      if (claimed !== undefined) {
+        if (isStale()) return;
+        setIsClaimed(claimed);
+        return;
+      }
+
       const logs = await client.getLogs({
         address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
         event: refundClaimedEvent,

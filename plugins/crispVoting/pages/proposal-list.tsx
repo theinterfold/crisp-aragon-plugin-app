@@ -20,6 +20,7 @@ import { ProposalCreatedEvent } from "../hooks/useProposal";
 import type { RawAction } from "@/utils/types";
 import type { Hex } from "viem";
 import { publicClient } from "../utils/client";
+import { fetchProposalsFromServer } from "../utils/proposalsApi";
 
 const DEFAULT_PAGE_SIZE = 6;
 
@@ -64,6 +65,17 @@ export default function Proposals() {
     if (lastFetchedBlock.current && fromBlock > blockNumber) return;
 
     try {
+      // The server's list first, when it can give one. It watches this plugin's logs already, so
+      // the scan below is work every client repeats against data the server holds. Its answer is
+      // the whole list, not a delta, so it replaces the incremental bookkeeping outright.
+      const fromServer = await fetchProposalsFromServer();
+      if (fromServer) {
+        lastFetchedBlock.current = blockNumber;
+        // Already newest-first from the server.
+        setProposalIds(fromServer.map((proposal) => BigInt(proposal.proposal_id)));
+        return;
+      }
+
       const logs = await publicClient
         .getLogs({
           address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,

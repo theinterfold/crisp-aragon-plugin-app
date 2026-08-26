@@ -31,7 +31,7 @@ function LoadingRow({ proposalId, message }: { proposalId: bigint; message: stri
 }
 
 export default function ProposalCard(props: ProposalInputs) {
-  const { proposal, e3Failed, status: proposalFetchStatus } = useProposal(props.proposalId);
+  const { proposal, e3Failed, isCommitteeReady, status: proposalFetchStatus } = useProposal(props.proposalId);
   const proposalStatus = useProposalStatus(proposal!, e3Failed);
 
   const showLoading = getShowProposalLoading(proposal, proposalFetchStatus);
@@ -80,14 +80,21 @@ export default function ProposalCard(props: ProposalInputs) {
         <p className="summary line-clamp-2">{proposal!.summary}</p>
         <div className="author">
           <em>By</em>
-          <AddressText bold={false}>{proposal!.creator}</AddressText>
+          {/* The whole row is a Link, so this one cannot be an anchor of its own. */}
+          <AddressText bold={false} linked={false}>
+            {proposal!.creator}
+          </AddressText>
         </div>
       </div>
       <div className="right">
         <span className="time">
-          {isActive && endDate > Date.now()
-            ? `Ends ${unixTimestampToDate(Math.round(endDate / 1000))}`
-            : capitalize(proposalStatus)}
+          {/* Same rule as the proposal header: an end date is only meaningful once there is a
+              committee key to encrypt a ballot against. */}
+          {isActive && endDate > Date.now() && !isCommitteeReady
+            ? "Forming committee"
+            : isActive && endDate > Date.now()
+              ? `Ends ${unixTimestampToDate(Math.round(endDate / 1000))}`
+              : capitalize(proposalStatus)}
         </span>
         {totalVotes > BigInt(0) && (
           <div className="mini-bar" aria-hidden="true">
