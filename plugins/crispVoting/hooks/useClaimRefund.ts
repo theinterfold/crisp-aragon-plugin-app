@@ -29,6 +29,24 @@ const refundManagerAbi = parseAbi([
 ]);
 
 /**
+ * The reason a contract read failed, in the words of whatever refused it.
+ *
+ * `describeFailure` is for transaction errors and reads `shortMessage`, which viem fills with its
+ * own generic text for an RPC-level rejection ("Invalid parameters were provided to the RPC
+ * method"). That hides the only useful part. `details` carries the JSON-RPC error verbatim — for
+ * an allowlisting proxy, the address it declined to serve — so it is preferred where present.
+ */
+function describeReadFailure(error: unknown): string {
+  const details = (error as { details?: string })?.details?.trim();
+  if (details) return details;
+
+  const short = (error as { shortMessage?: string })?.shortMessage?.trim();
+  if (short) return short.split("\n")[0];
+
+  return (error as Error)?.message?.split("\n")[0] ?? "the RPC gave no reason";
+}
+
+/**
  * Claims the requester refund for a proposal whose E3 failed.
  *
  * Claiming is the LAST of three steps, and the first two are what make it work:
@@ -65,7 +83,7 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
     query: { enabled: active },
   });
 
-  const { data: interfold } = useReadContract({
+  const { data: interfold, error: interfoldError } = useReadContract({
     chainId: PUB_CHAIN.id,
     address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
     abi: pluginAbi,
@@ -75,7 +93,11 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
 
   const interfoldAddress = interfold as Address | undefined;
 
-  const { data: stageRaw, refetch: refetchStage } = useReadContract({
+  const {
+    data: stageRaw,
+    refetch: refetchStage,
+    error: stageError,
+  } = useReadContract({
     chainId: PUB_CHAIN.id,
     address: interfoldAddress,
     abi: interfoldAbi,
@@ -84,7 +106,7 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
     query: { enabled: active && !!interfoldAddress },
   });
 
-  const { data: refundManager } = useReadContract({
+  const { data: refundManager, error: refundManagerError } = useReadContract({
     chainId: PUB_CHAIN.id,
     address: interfoldAddress,
     abi: interfoldAbi,
@@ -92,7 +114,11 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
     query: { enabled: active && !!interfoldAddress },
   });
 
-  const { data: distribution, refetch: refetchDistribution } = useReadContract({
+  const {
+    data: distribution,
+    refetch: refetchDistribution,
+    error: distributionError,
+  } = useReadContract({
     chainId: PUB_CHAIN.id,
     address: refundManager as Address | undefined,
     abi: refundManagerAbi,
@@ -116,6 +142,29 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
    * are chained off it.
    */
   const isReady = Boolean(interfoldAddress) && stageRaw !== undefined && distribution !== undefined;
+
+  /**
+   * The first of those reads to fail, described for the card.
+   *
+   * wagmi reports a failed read the same way it reports one still in flight: `data` is
+   * `undefined`. `isReady` therefore cannot tell "this call errored" from "this call has not
+   * answered yet", and stays false forever once a read fails — the card spins on
+   * "Checking what still needs to happen…" with nothing said about why. An RPC that refuses one
+   * of these addresses, rather than the chain rejecting the call, produces exactly that.
+   *
+   * The reads are listed in the order they resolve, so the message names the first thing that
+   * broke instead of a later read that was never reached.
+   */
+  const readError = [
+    { label: "the plugin's Interfold address", error: interfoldError },
+    { label: "the round's stage", error: stageError },
+    { label: "the refund manager address", error: refundManagerError },
+    { label: "the refund distribution", error: distributionError },
+  ].find(({ error }) => Boolean(error));
+
+  const readErrorMessage = readError
+    ? `Could not read ${readError.label}: ${describeReadFailure(readError.error)}`
+    : undefined;
 
   /**
    * Identity of the newest status query, and the proposal currently on screen.
@@ -278,6 +327,11 @@ export function useClaimRefund(proposalId: bigint | undefined, e3Id: bigint | un
     error,
     /** Every read `claim()` branches on has resolved; see the definition above. */
     isReady,
+    /**
+     * Why the state reads failed, if they did. `isReady` stays false either way — the card must
+     * not act on state it could not read — but this separates "cannot tell" from "still asking".
+     */
+    readError: readErrorMessage,
     isClaiming,
     claim,
   };

@@ -35,6 +35,7 @@ export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: big
     pendingSteps,
     error,
     isReady,
+    readError,
     isClaiming,
     claim,
   } = useClaimRefund(proposalId, e3Id);
@@ -93,14 +94,28 @@ export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: big
       )}
 
       {/* Held back until the reads resolve: `pendingSteps` counts an unresolved step as
-          outstanding, so showing it early claims more transactions than are actually needed. */}
-      <p className="text-sm text-neutral-500">
-        {!isReady
-          ? "Checking what still needs to happen…"
-          : pendingSteps > 1
-            ? `Requires ${pendingSteps} transactions — none of these steps happen automatically.`
-            : "Requires one transaction."}
-      </p>
+          outstanding, so showing it early claims more transactions than are actually needed.
+          A read that failed is reported instead — it never resolves, and the same line would
+          otherwise say "checking" for as long as the card is open. */}
+      {!readError && (
+        <p className="text-sm text-neutral-500">
+          {!isReady
+            ? "Checking what still needs to happen…"
+            : pendingSteps > 1
+              ? `Requires ${pendingSteps} transactions — none of these steps happen automatically.`
+              : "Requires one transaction."}
+        </p>
+      )}
+
+      {/* The refund itself is unaffected — the steps are permissionless and still claimable from
+          any other client — so this reports the reads, not the refund, as unavailable. */}
+      {readError && (
+        <AlertCard
+          variant="warning"
+          message="Could not read the refund state"
+          description={`${readError} Settling is disabled until the state can be read, because acting on it blind would re-send a step that already happened.`}
+        />
+      )}
 
       {/* Settlement failures surface here rather than only in the console: several of them
           (preflight, reverted receipt) never reach the transaction manager's alerts. */}
@@ -120,7 +135,13 @@ export const RefundCard = ({ proposalId, e3Id }: { proposalId: bigint; e3Id: big
           disabled={isClaiming || !isReady}
           onClick={() => void claim()}
         >
-          {!isReady ? "Checking…" : isMarkedFailed ? "Settle refund" : "Mark failed and refund"}
+          {readError
+            ? "Unavailable"
+            : !isReady
+              ? "Checking…"
+              : isMarkedFailed
+                ? "Settle refund"
+                : "Mark failed and refund"}
         </Button>
       </div>
     </div>
