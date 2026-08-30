@@ -4,7 +4,7 @@ import { MemberAvatar } from "@aragon/ods";
 import { useWeb3Modal } from "@web3modal/wagmi/react";
 import classNames from "classnames";
 import { useEffect } from "react";
-import { createClient, http } from "viem";
+import { http } from "viem";
 import { normalize } from "viem/ens";
 import { createConfig, useAccount, useEnsAvatar, useEnsName, useSwitchChain } from "wagmi";
 import { mainnet } from "wagmi/chains";
@@ -12,14 +12,11 @@ import { mainnet } from "wagmi/chains";
 const config = createConfig({
   chains: [mainnet],
   ssr: true,
-  client({ chain }) {
-    return createClient({
-      chain,
-      // ENS lives on mainnet, so it cannot come from the chain endpoint above (which points at
-      // this deployment's chain). viem's default mainnet transport needs no key and a failed
-      // name lookup only costs us a raw address in the UI.
-      transport: http(undefined, { batch: true }),
-    });
+  transports: {
+    // ENS lives on mainnet, so it cannot come from the chain endpoint above (which points at
+    // this deployment's chain). viem's default mainnet transport needs no key and a failed
+    // name lookup only costs us a raw address in the UI.
+    [mainnet.id]: http(undefined, { batch: true }),
   },
 });
 

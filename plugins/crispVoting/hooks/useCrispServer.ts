@@ -15,8 +15,8 @@ import {
   ballotTypedData,
   getBallotDigest,
   getCensusMode,
+  getCrispRoundConfig,
   getOnchainVotingPower,
-  resolveCrispProgram,
 } from "../utils/ballotDigest";
 import { usePublishVote } from "./usePublishVote";
 import { useCommitteeKeyCheck } from "./useCommitteeKeyCheck";
@@ -111,7 +111,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
   const [error, setError] = useState<string>("");
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  // All three go through the SDK (0.12.0) rather than hand-rolled fetches, so the
+  // All three go through the SDK rather than hand-rolled fetches, so the
   // route names and payload shapes stay owned by the SDK.
   const getRoundState = async (e3Id: bigint): Promise<IRoundDetailsResponse> => {
     return (await crispSdk.getRoundStateLite(e3Id)) as unknown as IRoundDetailsResponse;
@@ -282,7 +282,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
 
       // Resolved before the ballot is built: an ONCHAIN round takes its weight from this contract
       // rather than from a census, so the program has to be known first.
-      const crispProgram = await resolveCrispProgram(publicClient, PUB_CRISP_VOTING_PLUGIN_ADDRESS, e3Id);
+      const { crispProgram, paramSet } = await getCrispRoundConfig(publicClient, PUB_CRISP_VOTING_PLUGIN_ADDRESS, e3Id);
       const censusMode = await getCensusMode(publicClient, crispProgram, e3Id);
       const isOnchainCensus = censusMode === CensusMode.ONCHAIN;
 
@@ -319,9 +319,9 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
         numOptions: Number.parseInt(roundState.num_options),
       };
 
-      // The BFV circuits are preset-bound since SDK 0.18 and must be registered before any
-      // encryption or proving. Loaded lazily so the ~3MB artifacts only download when voting.
-      await ensureCircuits();
+      // The BFV circuits are preset-bound and must be registered before any encryption or
+      // proving. Loaded lazily so the matching artifact bundle only downloads when voting.
+      await ensureCircuits(paramSet);
 
       // The SDK's own prepareBallot (not the standalone one): it resolves the slot's head —
       // previous ciphertext plus its tree index — from the server and threads the pair into the

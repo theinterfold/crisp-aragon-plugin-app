@@ -23,9 +23,9 @@
   },
   "dependencies": {
     "@aragon/ods": "1.0.44",
-    "@crisp-e3/sdk": "0.18.0-insecure.0",
+    "@crisp-e3/sdk": "0.20.1",
     "@hookform/resolvers": "^3.9.0",
-    "@interfold/sdk": "0.7.0",
+    "@interfold/sdk": "0.14.0",
     "@phosphor-icons/react": "^2.1.10",
     "@react-native-async-storage/async-storage": "^1.24.0",
     "@shazow/whatsabi": "^0.14.1",

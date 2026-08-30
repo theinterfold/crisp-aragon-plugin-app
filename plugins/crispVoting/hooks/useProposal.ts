@@ -103,7 +103,7 @@ export function useProposal(proposalId: bigint) {
     if (e3Failed) return;
 
     // E3 ids are namespaced (contract address in the high bits, ~1e76), so they only survive
-    // as bigints — the SDK (0.18) takes them verbatim.
+    // as bigints.
     const roundId = proposalRaw.e3Id;
 
     crispSdk
