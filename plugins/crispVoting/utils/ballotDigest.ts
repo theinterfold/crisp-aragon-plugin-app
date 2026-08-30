@@ -31,11 +31,11 @@ export const CensusMode = { TOKEN: 0, BY_REQUESTER: 1, ONCHAIN: 2 } as const;
  * @param e3Id The round.
  * @returns The CRISP program address for that round.
  */
-export const resolveCrispProgram = async (
+export const getCrispRoundConfig = async (
   client: PublicClient,
   pluginAddress: Address,
   e3Id: bigint
-): Promise<Address> => {
+): Promise<{ crispProgram: Address; paramSet: number }> => {
   const interfoldAddress = await client.readContract({
     address: pluginAddress,
     abi: pluginAbi,
@@ -49,7 +49,7 @@ export const resolveCrispProgram = async (
     args: [e3Id],
   });
 
-  return e3.e3Program;
+  return { crispProgram: e3.e3Program, paramSet: e3.paramSet };
 };
 
 /**
