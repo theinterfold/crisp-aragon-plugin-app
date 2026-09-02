@@ -15,6 +15,7 @@ const interfoldAbi = parseAbi([
 
 const crispProgramAbi = parseAbi([
   "function publishInput(uint256 e3Id, bytes data)",
+  "function inputCommitmentDeadline(uint256 e3Id) view returns (uint256)",
   "function getRoundData(uint256 e3Id) view returns (uint256 merkleRoot, bytes32 paramsHash, uint256 numOptions, uint8 creditMode, uint256 inputRoot, uint40 numberOfVotes)",
   "function censusModeOf(uint256 e3Id) view returns (uint8)",
 ]);
@@ -29,6 +30,10 @@ export type PublishVote = {
   blockedReason?: string;
   /** Still resolving the reads needed to answer that. */
   isLoading: boolean;
+  /** Last timestamp at which a new ballot commitment can be accepted. */
+  commitmentDeadline?: bigint;
+  /** End of the complete input window, including Avail finalization. */
+  inputWindowEnd?: bigint;
   /** Submits an already-built vote payload directly to the CRISP program. */
   publish: (encodedProof: Hex) => Promise<Hex>;
 };
@@ -79,9 +84,8 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     query: { enabled: enabled && !!interfoldAddress },
   });
 
-  // The CRISP program address comes from the E3 itself rather than configuration: the plugin
-  // stores `crispProgramAddress` privately with no getter, and the E3 is the authority on which
-  // program a round actually runs.
+  // Resolve the CRISP program from the E3. This remains the authority for historical rounds even
+  // if a later plugin deployment uses another program for new proposals.
   const programAddress = (e3 as { e3Program?: Address } | undefined)?.e3Program;
   const inputWindow = (e3 as { inputWindow?: readonly [bigint, bigint] } | undefined)?.inputWindow;
 
@@ -105,6 +109,15 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     query: { enabled: enabled && !!programAddress },
   });
 
+  const { data: inputCommitmentDeadline } = useReadContract({
+    chainId: PUB_CHAIN.id,
+    address: programAddress,
+    abi: crispProgramAbi,
+    functionName: "inputCommitmentDeadline",
+    args: [e3Id ?? 0n],
+    query: { enabled: enabled && !!programAddress },
+  });
+
   // An on-chain census never posts a root: `_eligibility` reads power from the token per input and
   // never consults `merkleRoot`. Requiring one would block publishing forever on exactly the mode
   // that removes the census, and report a missing root the round is never going to have.
@@ -114,7 +127,8 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     enabled &&
     (stageRaw === undefined ||
       e3 === undefined ||
-      (!!programAddress && (roundData === undefined || censusModeRaw === undefined)));
+      (!!programAddress &&
+        (roundData === undefined || censusModeRaw === undefined || inputCommitmentDeadline === undefined)));
 
   /**
    * Mirrors every guard in `publishInput` so the UI can refuse before spending gas on a revert,
@@ -132,7 +146,9 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     if (inputWindow) {
       const now = BigInt(Math.floor(Date.now() / 1000));
       if (now < inputWindow[0]) return "The voting window has not opened yet.";
-      if (now > inputWindow[1]) return "The voting window has closed.";
+      if (inputCommitmentDeadline !== undefined && now >= inputCommitmentDeadline) {
+        return "The voting window has closed for new ballots.";
+      }
     }
     return undefined;
   })();
@@ -165,6 +181,8 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     canPublish: !isLoading && !blockedReason && !!programAddress,
     blockedReason,
     isLoading: Boolean(isLoading),
+    commitmentDeadline: inputCommitmentDeadline as bigint | undefined,
+    inputWindowEnd: inputWindow?.[1],
     publish,
   };
 }

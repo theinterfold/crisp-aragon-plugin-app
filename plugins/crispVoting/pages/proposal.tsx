@@ -43,6 +43,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
     txHash,
     canPublishOnChain,
     onChainBlockedReason,
+    inputCommitmentDeadline,
   } = useCrispServer(proposal?.e3Id);
   // Eligibility is the token's delegated power at the proposal's snapshot, not a plugin call.
   const canVote = useCanVote(proposal?.e3Id, proposal?.parameters.snapshotBlock);
@@ -98,6 +99,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
         proposal={proposal}
         e3Failed={e3Failed}
         isCommitteeReady={isCommitteeReady}
+        votingDeadline={inputCommitmentDeadline}
       />
 
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:px-16 md:pb-20 md:pt-10">
@@ -120,7 +122,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
               <VoteCard
                 error={canVote === false ? "You cannot vote on this proposal" : undefined}
                 voteStartDate={Number(proposal?.parameters.startDate)}
-                voteEndDate={Number(proposal?.parameters.endDate)}
+                voteEndDate={Number(inputCommitmentDeadline ?? proposal?.parameters.endDate)}
                 isCommitteeReady={isCommitteeReady}
                 options={options}
                 disabled={
@@ -130,6 +132,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
                   // action live. The error copy above still keys off a definitive `false`, so an
                   // in-flight read disables the button without accusing anyone of being ineligible.
                   canVote !== true ||
+                  canPublishOnChain !== true ||
                   proposalStatus !== ProposalStatus.ACTIVE ||
                   Number(proposal?.parameters.startDate) > Math.round(Date.now() / 1000)
                 }
