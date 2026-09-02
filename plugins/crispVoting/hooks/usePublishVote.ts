@@ -34,18 +34,16 @@ export type PublishVote = {
 };
 
 /**
- * Submits a vote straight to the CRISP program instead of handing it to the CRISP server.
+ * Submits the compact proof commitment returned by the CRISP availability service.
  *
- * The client already does all the work — encrypting the ballot and generating the Noir proof
- * happen locally, and `encodeSolidityProof` produces exactly the `(bytes, address, bytes32, bytes)`
- * tuple that `CRISPProgram.publishInput` decodes. The server's only role in the existing flow is
- * to relay that payload in a transaction, so bypassing it costs the voter gas and removes a
- * liveness dependency without changing the ballot in any way.
+ * The service must receive and store the encrypted ballot before it signs this commitment. The
+ * voter submits the returned payload when the deployment does not use a relay. Avail and VectorX
+ * finalization then continue in the background.
  *
  * `publishInput` verifies the Noir proof on-chain against `e3.committeePublicKey`, so a vote that
  * reaches the tally this way cannot have been encrypted under a key the committee does not hold.
- * (It does NOT protect ballot secrecy — a ballot encrypted to the wrong key is broadcast publicly
- * before it is rejected — but it does mean a relayer cannot substitute or drop a valid vote.)
+ * The contract verifies the Noir proof against the committee-key commitment before it accepts the
+ * input commitment. The later availability proof must identify the same ciphertext hash.
  */
 export function usePublishVote(e3Id: bigint | undefined): PublishVote {
   const client = usePublicClient();

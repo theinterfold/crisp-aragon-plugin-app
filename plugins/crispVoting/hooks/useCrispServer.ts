@@ -1,9 +1,16 @@
-import { PUB_CHAIN, PUB_CRISP_SERVER_URL, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_TOKEN_ADDRESS } from "@/constants";
+import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_TOKEN_ADDRESS } from "@/constants";
 import { useState } from "react";
 import { useAccount, useSignTypedData } from "wagmi";
 import { CreditsMode } from "../utils/types";
 import type { EligibleVoter, IRoundDetailsResponse, VoteData, VotingStep } from "../utils/types";
-import { encodeSolidityProof, finishBallotProof, finishMaskProof, getZeroVote } from "@crisp-e3/sdk";
+import {
+  encodeSolidityProof,
+  finishBallotProof,
+  finishMaskProof,
+  getZeroVote,
+  type BroadcastVoteRequest,
+  type BroadcastVoteResponse,
+} from "@crisp-e3/sdk";
 import { ensureCircuits } from "../utils/circuits";
 import { iVotesAbi } from "../artifacts/iVotes";
 import { publicClient } from "../utils/client";
@@ -45,14 +52,7 @@ function toKeyBytes(value: unknown): Uint8Array | undefined {
 interface CrispServerState {
   isLoading: boolean;
   error: string;
-  postVote: (
-    voteOption: bigint,
-    e3Id: bigint,
-    snapshotBlock: bigint,
-    isAMask?: boolean,
-    /** Send the vote yourself instead of handing it to the CRISP server to relay. */
-    submitOnChain?: boolean
-  ) => Promise<void>;
+  postVote: (voteOption: bigint, e3Id: bigint, snapshotBlock: bigint, isAMask?: boolean) => Promise<void>;
   votingStep: VotingStep;
   lastActiveStep: VotingStep | null;
   stepMessage: string;
@@ -63,24 +63,31 @@ interface CrispServerState {
   onChainBlockedReason?: string;
 }
 
-interface VoteResponse {
-  status: string;
-  tx_hash: string | null;
-  message: string | null;
-  is_vote_update: boolean | null;
+type PendingAvailabilityJob = {
+  jobId: string;
+  encodedProof: string;
+  isMask: boolean;
+};
+
+function availabilityJobKey(e3Id: bigint, address: string): string {
+  return `crisp-availability-${PUB_CHAIN.id}-${e3Id}-${address.toLowerCase()}`;
 }
 
-/**
- * Request body for broadcasting a vote to the CRISP server
- */
-export interface BroadcastVoteRequest {
-  /// Decimal string, not a number. E3 ids are namespaced by the Interfold address — the low 96
-  /// bits are the counter, the high 160 the contract — so they are ~1e76 and lose precision as a
-  /// JS number, reaching the server in exponential form. The server parses base-10 and answers
-  /// 400 with a message the UI never surfaces.
-  round_id: string;
-  encoded_proof: string;
-  address: string;
+function readAvailabilityJob(key: string): PendingAvailabilityJob | undefined {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? (JSON.parse(value) as PendingAvailabilityJob) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeAvailabilityJob(key: string, job: PendingAvailabilityJob): void {
+  localStorage.setItem(key, JSON.stringify(job));
+}
+
+function clearAvailabilityJob(key: string): void {
+  localStorage.removeItem(key);
 }
 
 /**
@@ -221,19 +228,76 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     };
   };
 
-  const postVote = async (
-    voteOption: bigint,
-    e3Id: bigint,
-    snapshotBlock: bigint,
-    isAMask: boolean = false,
-    submitOnChain: boolean = false
-  ) => {
+  const postVote = async (voteOption: bigint, e3Id: bigint, snapshotBlock: bigint, isAMask: boolean = false) => {
     setIsLoading(true);
     try {
       if (!address) {
         setError("No wallet address found");
         setVotingStep("error");
         setStepMessage("No wallet address found");
+        return;
+      }
+
+      const pendingJobKey = availabilityJobKey(e3Id, address);
+
+      const finishAvailability = async (response: BroadcastVoteResponse, operationIsMask: boolean): Promise<void> => {
+        let current = response;
+        if (current.status === "failed_broadcast") {
+          clearAvailabilityJob(pendingJobKey);
+          throw new Error(current.message ?? "The availability service rejected the ballot");
+        }
+
+        let transactionHash = current.tx_hash;
+        if (current.status === "ready_for_commitment") {
+          if (!current.encoded_proof) {
+            throw new Error("The availability service did not return the proof commitment");
+          }
+          if (!canPublishOnChain) {
+            throw new Error(onChainBlockedReason ?? "The round is not ready for the proof commitment");
+          }
+
+          setStepMessage("Please confirm the proof commitment in your wallet...");
+          transactionHash = await publishVoteOnChain(current.encoded_proof as `0x${string}`);
+
+          if (current.job_id) {
+            current = await crispSdk.getVoteAvailability(current.job_id);
+          }
+        }
+
+        if (transactionHash) setTxHash(transactionHash);
+
+        const label = operationIsMask ? "Mask" : "Vote";
+        const finalized = current.status === "success";
+        const queued = current.status === "pending_commitment";
+        setVotingStep("complete");
+        setStepMessage(
+          finalized
+            ? `${label} finalized successfully!`
+            : queued
+              ? `${label} proof stored and queued for commitment. You can safely leave this page.`
+              : `${label} committed. Availability will finalize in the background.`
+        );
+        addAlert(
+          finalized
+            ? `${label} finalized successfully!`
+            : queued
+              ? `${label} proof queued. You can safely leave this page.`
+              : `${label} committed. You can safely leave this page.`,
+          { timeout: 5000, type: "success" }
+        );
+
+        if (finalized) clearAvailabilityJob(pendingJobKey);
+      };
+
+      const pendingJob = readAvailabilityJob(pendingJobKey);
+      if (pendingJob) {
+        setVotingStep("broadcasting");
+        setLastActiveStep("broadcasting");
+        setStepMessage("Checking your pending availability job...");
+        const response = await crispSdk
+          .getVoteAvailability(pendingJob.jobId)
+          .catch(() => crispSdk.broadcastVote({ e3Id, encodedProof: pendingJob.encodedProof }));
+        await finishAvailability(response, pendingJob.isMask);
         return;
       }
 
@@ -248,19 +312,6 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
         setError("This round is not accepting votes yet. Please wait and try again.");
         setVotingStep("error");
         setStepMessage("This round is not accepting votes yet.");
-        return;
-      }
-
-      // Bail out before signing and proof generation when the chain stage or input window
-      // already blocks on-chain publication. `canPublish` is false while the preconditions are
-      // still being read too, in which case there is no reason to report yet.
-      if (submitOnChain && !canPublishOnChain) {
-        const reason =
-          onChainBlockedReason ??
-          "Still checking whether this round accepts on-chain votes. Please try again in a moment.";
-        setError(reason);
-        setVotingStep("error");
-        setStepMessage(reason);
         return;
       }
 
@@ -383,61 +434,27 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
 
       // For now we are mocking
       const voteBody: BroadcastVoteRequest = {
-        encoded_proof: encodedProof,
-        address: address as string,
-        round_id: e3Id.toString(),
+        e3Id,
+        encodedProof,
       };
 
       // Step 3: Broadcasting
       setVotingStep("broadcasting");
       setLastActiveStep("broadcasting");
 
-      // Everything above this point is identical for both routes: the ballot is encrypted and
-      // proven locally, and `encodedProof` is already the exact payload `publishInput` decodes.
-      // The only difference is who sends the transaction — the voter, or the CRISP server acting
-      // as a relayer.
-      if (submitOnChain) {
-        setStepMessage("Publishing your vote on-chain...");
-
-        const hash = await publishVoteOnChain(encodedProof as `0x${string}`);
-        setTxHash(hash);
-
-        const onChainLabel = isAMask ? "Masking" : "Vote";
-        setVotingStep("complete");
-        setStepMessage(`${onChainLabel} published on-chain!`);
-        addAlert(`${onChainLabel} published on-chain!`, { timeout: 3000, type: "success" });
-        return;
+      // The availability service first stores the ciphertext and returns a compact proof
+      // commitment. It either relays that commitment or asks this wallet to submit it. Avail and
+      // VectorX finalization continue after this request returns.
+      setStepMessage("Storing the encrypted ballot and committing its proof...");
+      const voteResponse = await crispSdk.broadcastVote(voteBody);
+      if (voteResponse.job_id) {
+        writeAvailabilityJob(pendingJobKey, {
+          jobId: voteResponse.job_id,
+          encodedProof,
+          isMask: isAMask,
+        });
       }
-
-      setStepMessage("Broadcasting vote to the network...");
-
-      const response = await fetch(`${PUB_CRISP_SERVER_URL}/voting/broadcast`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(voteBody),
-      });
-
-      if (response.status !== 200) {
-        setError("Failed to broadcast vote");
-        setVotingStep("error");
-        setStepMessage("Failed to broadcast vote");
-        return;
-      }
-
-      const voteResponse = (await response.json()) as VoteResponse;
-
-      if (voteResponse.tx_hash) {
-        setTxHash(voteResponse.tx_hash);
-      }
-
-      const label = isAMask ? "Masking" : voteResponse.is_vote_update ? "Vote update" : "Vote";
-
-      setVotingStep("complete");
-      setStepMessage(`${label} submitted successfully!`);
-
-      addAlert(`${label} submitted successfully!`, { timeout: 3000, type: "success" });
+      await finishAvailability(voteResponse, isAMask);
     } catch (error) {
       console.error("Error in postVote:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
