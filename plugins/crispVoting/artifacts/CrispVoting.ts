@@ -142,6 +142,46 @@ export const CrispVotingAbi = [
   },
   {
     type: "function",
+    name: "createProposalWithDuration",
+    inputs: [
+      {
+        name: "_metadata",
+        type: "bytes",
+        internalType: "bytes",
+      },
+      {
+        name: "_actions",
+        type: "tuple[]",
+        internalType: "struct Action[]",
+        components: [
+          { name: "to", type: "address", internalType: "address" },
+          { name: "value", type: "uint256", internalType: "uint256" },
+          { name: "data", type: "bytes", internalType: "bytes" },
+        ],
+      },
+      {
+        name: "_duration",
+        type: "uint64",
+        internalType: "uint64",
+      },
+      {
+        name: "_data",
+        type: "bytes",
+        internalType: "bytes",
+      },
+    ],
+    outputs: [{ name: "proposalId", type: "uint256", internalType: "uint256" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "crispProgram",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "customProposalParamsABI",
     inputs: [],
     outputs: [
@@ -715,6 +755,16 @@ export const CrispVotingAbi = [
         internalType: "uint256",
       },
     ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "quoteFeeForDuration",
+    inputs: [
+      { name: "_duration", type: "uint64", internalType: "uint64" },
+      { name: "_data", type: "bytes", internalType: "bytes" },
+    ],
+    outputs: [{ name: "fee", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
   {

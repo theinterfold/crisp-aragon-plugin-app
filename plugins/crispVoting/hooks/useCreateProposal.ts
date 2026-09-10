@@ -47,13 +47,10 @@ export function useCreateProposal() {
   const [resources, setResources] = useState<{ name: string; url: string }[]>([]);
   // A duration, not a pair of absolute dates.
   //
-  // Voting always starts when the proposal is created (the contract reads a `_startDate` of 0 as
-  // `block.timestamp`), so a start field could only ever say "now" or schedule a vote for later —
-  // and scheduling was never the intent. Asking for a duration also removes a whole class of bug:
-  // an absolute end date picked before an IPFS upload and a funding transaction could be in the
-  // past by the time the create transaction landed, whereas a duration is resolved against the
-  // clock at submit.
-  const [durationValue, setDurationValue] = useState<number>(1);
+  // The proposal input window starts when the create transaction is mined. Encrypted ballots can
+  // be submitted after the committee key is ready. A duration avoids an absolute end date becoming
+  // stale while metadata uploads and funding transactions complete.
+  const [durationValue, setDurationValue] = useState<number>(5);
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("days");
 
   const [numOptions, setNumOptions] = useState<number>(2);
@@ -100,17 +97,7 @@ export function useCreateProposal() {
     [numOptions, creditsMode, credits]
   );
 
-  // Quote against the same shape `submitProposal` sends: start 0 ("start now"), end = now +
-  // duration.
-  //
-  // `now` is rounded down to the minute rather than read raw. A value that changed on every
-  // render would hand the quote hook a new key each time and refetch it in a loop; a minute-
-  // resolution bucket is stable enough to hold still and close enough for a fee that scales with
-  // window length.
-  const nowBucket = Math.floor(Date.now() / 60_000) * 60;
-  const quotedEndDate = durationSeconds > 0 ? nowBucket + durationSeconds : 0;
-
-  const feeQuote = useProposalFeeQuote(0, quotedEndDate, data);
+  const feeQuote = useProposalFeeQuote(durationSeconds, data);
 
   const submitProposal = async () => {
     // Check metadata
@@ -132,8 +119,8 @@ export function useCreateProposal() {
     // minDuration allows", which for a plugin configured with minDuration 0 is a vote that closes
     // in the same block. Demand an explicit window rather than silently creating one.
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-      return addAlert("Invalid voting duration", {
-        description: "Please set how long voting should stay open",
+      return addAlert("Invalid proposal duration", {
+        description: "Set how long the complete proposal input window should stay open",
         type: "error",
       });
     }
@@ -167,17 +154,7 @@ export function useCreateProposal() {
 
       const ipfsPin = await uploadToPinata(JSON.stringify(proposalMetadataJsonObject));
 
-      // The end is resolved HERE, against the clock at send time, not when the form was filled in.
-      // The IPFS upload and any funding transaction above can take a while, and an absolute end
-      // date chosen before them could already be in the past by now — which the contract rejects
-      // with `DateOutOfBounds`. A duration cannot go stale that way.
-      //
-      // Start is always 0: the contract reads that as `block.timestamp`, so the window opens when
-      // the transaction lands rather than at a timestamp that has to be guessed ahead of it.
-      const buildArgs = () => {
-        const endDateTime = Math.floor(Date.now() / 1000) + durationSeconds;
-        return [toHex(ipfsPin), actions, 0n, BigInt(endDateTime), data] as const;
-      };
+      const buildArgs = () => [toHex(ipfsPin), actions, BigInt(durationSeconds), data] as const;
 
       // The plugin debits escrowed credit rather than pulling the fee from the caller, so the
       // credit has to cover the E3 quote BEFORE the create transaction is sent. `quoteFee` shows
@@ -194,7 +171,7 @@ export function useCreateProposal() {
           account: selfAddress,
           abi: CrispVotingAbi,
           address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-          functionName: "createProposal",
+          functionName: "createProposalWithDuration",
           args: buildArgs(),
         })
         .then(() => undefined)
@@ -215,7 +192,7 @@ export function useCreateProposal() {
         chainId: PUB_CHAIN.id,
         abi: CrispVotingAbi,
         address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-        functionName: "createProposal",
+        functionName: "createProposalWithDuration",
         args: buildArgs(),
       });
     } catch (err) {

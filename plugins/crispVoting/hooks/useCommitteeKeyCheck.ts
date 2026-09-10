@@ -4,7 +4,13 @@ import { usePublicClient } from "wagmi";
 // malformed hex, which a `Uint8Array` silently stores as 0.
 import { hexToBytes, parseAbi, parseAbiItem, type Address, type Hex } from "viem";
 import { PUB_CRISP_VOTING_PLUGIN_ADDRESS, PUB_DEPLOYMENT_BLOCK } from "@/constants";
-import { decodeParamSet, isCommitteeKeyAuthentic, type ChainBfvParams } from "../utils/committeeKey";
+import {
+  decodeParamSet,
+  isCommitteeKeyAuthentic,
+  resolvePresetForParams,
+  type ChainBfvParams,
+} from "../utils/committeeKey";
+import type { ThresholdBfvParamsPresetName } from "@interfold/sdk";
 import { getPastBlockNumberAtTimestamp } from "../utils/blockAtTimestamp";
 
 const pluginAbi = parseAbi(["function interfold() view returns (address)"]);
@@ -36,6 +42,12 @@ export type CommitteeKeyResolution = {
   source?: "chain" | "server";
   /** Why no key could be accepted. */
   reason?: string;
+  /**
+   * The round's parameter set, identified from `paramSetRegistry` rather than assumed from the
+   * numeric `paramSet`. The vote path loads its circuits from this, so a round that enables
+   * secure parameters on chain proves against them without an app change.
+   */
+  presetName?: ThresholdBfvParamsPresetName;
 };
 
 /**
@@ -87,12 +99,20 @@ export function useCommitteeKeyCheck(e3Id: bigint | undefined) {
 
         const params: ChainBfvParams = decodeParamSet(encodedParams);
 
+        // Identified once, from the chain, and returned with the key: the vote path needs the
+        // same answer to pick its circuits, and resolving it twice invites the two halves of a
+        // round to disagree about which parameters it runs under.
+        const presetName = await resolvePresetForParams(params);
+        if (!presetName) {
+          return { reason: "This round's encryption parameters do not match any parameter set this app can verify." };
+        }
+
         const fromChain = await resolveFromChain(client, interfold, e3Id, e3, params);
-        if (fromChain.key) return fromChain;
+        if (fromChain.key) return { ...fromChain, presetName };
 
         if (serverKey && serverKey.length > 0) {
           const verdict = await isCommitteeKeyAuthentic(serverKey, e3.committeePublicKey, params);
-          if (verdict.ok) return { key: serverKey, source: "server" };
+          if (verdict.ok) return { key: serverKey, source: "server", presetName };
 
           return {
             reason: `${fromChain.reason ?? "No committee key was published on-chain."} The key offered by the CRISP server was rejected too: ${verdict.reason}`,

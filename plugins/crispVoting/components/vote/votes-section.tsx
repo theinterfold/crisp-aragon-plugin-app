@@ -28,7 +28,12 @@ const VetoCard = function ({ veto }: { veto: VoteCastEvent }) {
     <Card className="p-3">
       <div className="space-between flex flex-row">
         <div className="flex flex-grow">
-          <Blockies className="rounded-3xl" size={9} seed={veto?.voter ?? ""} />
+          {/* Lowercased deliberately. react-blockies seeds its PRNG from `seed.charCodeAt(i)`
+              with no normalisation, so the CHECKSUMMED address viem returns from logs and the
+              lowercase form every other explorer feeds it produce different icons for the same
+              account. Etherscan, Blockscout and the ODS member avatars all seed with lowercase,
+              so this is what makes our icon match theirs. */}
+          <Blockies className="rounded-3xl" size={9} seed={(veto?.voter ?? "").toLowerCase()} />
           <div className="px-2">
             <AddressText>{veto?.voter}</AddressText>
             <p className="text-sm text-neutral-600">
