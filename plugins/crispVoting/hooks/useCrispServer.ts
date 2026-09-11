@@ -439,7 +439,11 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
         body: JSON.stringify(voteBody),
       });
 
-      if (response.status !== 200) {
+      // The relay answers 200 only when this exact statement already has a completed job, and
+      // 202 when it staged fresh durable work — the normal path for a new vote, because Avail
+      // publication is asynchronous. Treat every 2xx as accepted; anything else is a real
+      // rejection and carries the server's reason.
+      if (!response.ok) {
         setError("Failed to broadcast vote");
         setVotingStep("error");
         setStepMessage("Failed to broadcast vote");

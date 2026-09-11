@@ -1,12 +1,12 @@
 import { PUB_CHAIN } from "@/constants";
 import { formatHexString } from "@/utils/evm";
+import { blockieDataUrl } from "@/utils/blockies";
 import { MemberAvatar } from "@aragon/ods";
 import { useWeb3Modal } from "@web3modal/wagmi/react";
 import classNames from "classnames";
 import { useEffect } from "react";
 import { http } from "viem";
-import { normalize } from "viem/ens";
-import { createConfig, useAccount, useEnsAvatar, useEnsName, useSwitchChain } from "wagmi";
+import { createConfig, useAccount, useEnsName, useSwitchChain } from "wagmi";
 import { mainnet } from "wagmi/chains";
 
 const config = createConfig({
@@ -32,13 +32,9 @@ const WalletContainer = () => {
     address: address,
   });
 
-  const { data: ensAvatar } = useEnsAvatar({
-    config,
-    name: normalize(ensName!),
-    chainId: mainnet.id,
-    gatewayUrls: ["https://cloudflare-ipfs.com"],
-    query: { enabled: !!ensName },
-  });
+  // Always the blockie, matching how explorers render an address (Etherscan never substitutes an
+  // ENS avatar). Synchronous, so it is correct from the first paint and never swaps.
+  const blockie = blockieDataUrl(address);
 
   useEffect(() => {
     if (!chainId) return;
@@ -60,7 +56,7 @@ const WalletContainer = () => {
       {isConnected && address && (
         <div className="flex items-center gap-3">
           <span className="hidden md:block">{ensName ?? formatHexString(address)}</span>
-          <MemberAvatar src={ensAvatar ?? ""} address={address} alt="Profile picture" size="md" />
+          <MemberAvatar src={blockie ?? ""} address={address} alt="Profile picture" size="md" />
         </div>
       )}
 
