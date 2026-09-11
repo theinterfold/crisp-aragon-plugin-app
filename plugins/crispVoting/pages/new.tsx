@@ -233,9 +233,18 @@ export default function Create() {
 
           {/* Proposal timing */}
           <div className="mb-6 flex flex-col gap-y-2">
+            {/* The label is kept ABOVE the row rather than passed as `InputNumber`'s `label` prop.
+                ODS renders that prop inside the input's own flex-col wrapper, which makes the
+                wrapper taller than the 48px dropdown beside it; with `items-start` the row then
+                aligns the label's top against the dropdown's top and the input field itself sits
+                ~29px lower. `htmlFor`/`id` keeps the control properly labelled for screen readers
+                without putting the text inside the wrapper. */}
+            <label htmlFor="proposal-duration" className="text-base font-normal leading-tight text-neutral-800">
+              Proposal duration *
+            </label>
             <div className="flex items-start gap-x-3">
               <InputNumber
-                label="Proposal duration *"
+                id="proposal-duration"
                 className="flex-1"
                 min={1}
                 value={Number.isFinite(durationValue) ? durationValue : ""}
