@@ -101,6 +101,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     blockedReason: onChainBlockedReason,
     isLoading: ballotWindowLoading,
     commitmentDeadline: inputCommitmentDeadline,
+    timeBlockedReason: ballotWindowBlockedReason,
   } = usePublishVote(e3Id);
 
   const resolveCommitteeKey = useCommitteeKeyCheck(e3Id);
@@ -400,6 +401,21 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       // proven locally, and `encodedProof` is already the exact payload `publishInput` decodes.
       // The only difference is who sends the transaction — the voter, or the CRISP server acting
       // as a relayer.
+      //
+      // Re-checked HERE, once, covering both routes. Every guard above was evaluated when the
+      // component rendered, and the work between then and now — committee-key resolution, circuit
+      // download, the wallet signature, proof generation — takes tens of seconds. A round that was
+      // open at render can be closed by the time the payload is ready, and the relay route is no
+      // safer than the direct one: the server submits the same expired proof to the same
+      // `publishInput`, so it reverts there instead of here.
+      const expiredReason = ballotWindowBlockedReason();
+      if (expiredReason) {
+        setError(expiredReason);
+        setVotingStep("error");
+        setStepMessage(expiredReason);
+        return;
+      }
+
       if (submitOnChain) {
         setStepMessage("Publishing your vote on-chain...");
 

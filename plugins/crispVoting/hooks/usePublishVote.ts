@@ -36,6 +36,14 @@ export type PublishVote = {
   inputWindowEnd?: bigint;
   /** Submits an already-built vote payload directly to the CRISP program. */
   publish: (encodedProof: Hex) => Promise<Hex>;
+  /**
+   * Re-evaluates the time-dependent guards against the clock at call time.
+   *
+   * Returns the reason a vote must be refused right now, or `undefined`. Callers that submit by a
+   * route other than `publish` (the CRISP server relay) must apply this themselves — the deadline
+   * belongs to the round, not to whoever sends the transaction.
+   */
+  timeBlockedReason: () => string | undefined;
 };
 
 /**
@@ -203,5 +211,13 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     commitmentDeadline: inputCommitmentDeadline as bigint | undefined,
     inputWindowEnd: inputWindow?.[1],
     publish,
+    /**
+     * The time-dependent guards, re-evaluated against the clock when called.
+     *
+     * Exposed so the RELAY route can reuse it. `publish` applies it internally, but a vote handed
+     * to the CRISP server reaches `publishInput` through the relayer and is just as expired — the
+     * deadline belongs to the round, not to who submits the transaction.
+     */
+    timeBlockedReason,
   };
 }

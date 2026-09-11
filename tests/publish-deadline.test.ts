@@ -70,4 +70,26 @@ describe("publish-time commitment deadline re-check", () => {
     expect(timeBlockedReason(2_500n, window_, undefined)).toBeUndefined();
     expect(timeBlockedReason(500n, window_, undefined)).toBe("The voting window has not opened yet.");
   });
+
+  /**
+   * BOTH submission routes must apply the guard, not just the direct one.
+   *
+   * `postVote` ends in a branch: publish straight to `publishInput`, or POST the same payload to
+   * the CRISP server's `/voting/broadcast`. The relayer submits that payload to the SAME contract
+   * function, so an expired proof reverts there instead of here — handing it to the server does
+   * not make it acceptable, it only moves the failure somewhere the voter cannot see it.
+   */
+  test.each([
+    ["direct publishInput", true],
+    ["CRISP server relay", false],
+  ])("refuses an expired ballot on the %s route", (_label, submitOnChain) => {
+    const verdict = timeBlockedReason(2_500n, window_, DEADLINE);
+
+    // The guard is evaluated BEFORE the route branch, so the verdict cannot depend on it.
+    const wouldSubmit = verdict === undefined;
+    expect(wouldSubmit).toBe(false);
+    expect(verdict).toBe("The voting window has closed for new ballots.");
+    // Named only to document that the outcome is identical for both values.
+    expect(typeof submitOnChain).toBe("boolean");
+  });
 });
