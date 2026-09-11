@@ -233,9 +233,9 @@ export default function Create() {
 
           {/* Proposal timing */}
           <div className="mb-6 flex flex-col gap-y-2">
-            <label className="text-base font-normal leading-tight text-neutral-800">Proposal duration *</label>
             <div className="flex items-start gap-x-3">
               <InputNumber
+                label="Proposal duration *"
                 className="flex-1"
                 min={1}
                 value={Number.isFinite(durationValue) ? durationValue : ""}

@@ -131,6 +131,25 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
         (roundData === undefined || censusModeRaw === undefined || inputCommitmentDeadline === undefined)));
 
   /**
+   * The time-dependent guards, evaluated against the clock at call time.
+   *
+   * Split out from `blockedReason` because that value is captured when the component renders and
+   * `useProposal` only re-renders on a new block. Proof generation runs for tens of seconds
+   * between the render that enabled the button and the write, so the render-time verdict can be
+   * stale by the time it matters. The deadline itself is fixed for a round — only `now` moves —
+   * so re-reading the clock is enough and no refetch is needed.
+   */
+  const timeBlockedReason = (): string | undefined => {
+    if (!inputWindow) return undefined;
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (now < inputWindow[0]) return "The voting window has not opened yet.";
+    if (inputCommitmentDeadline !== undefined && now >= inputCommitmentDeadline) {
+      return "The voting window has closed for new ballots.";
+    }
+    return undefined;
+  };
+
+  /**
    * Mirrors every guard in `publishInput` so the UI can refuse before spending gas on a revert,
    * and can say which one is the problem rather than surfacing a bare rejection.
    */
@@ -143,14 +162,7 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     if (requiresMerkleRoot && merkleRoot === 0n) {
       return "The census merkle root has not been set for this round yet.";
     }
-    if (inputWindow) {
-      const now = BigInt(Math.floor(Date.now() / 1000));
-      if (now < inputWindow[0]) return "The voting window has not opened yet.";
-      if (inputCommitmentDeadline !== undefined && now >= inputCommitmentDeadline) {
-        return "The voting window has closed for new ballots.";
-      }
-    }
-    return undefined;
+    return timeBlockedReason();
   })();
 
   const { writeContractAsync } = useTransactionManager({
@@ -163,6 +175,13 @@ export function usePublishVote(e3Id: bigint | undefined): PublishVote {
     if (!client) throw new Error("No RPC client available");
     if (!programAddress) throw new Error("The round's CRISP program could not be resolved");
     if (blockedReason) throw new Error(blockedReason);
+
+    // Re-checked here, against the clock as it is NOW rather than as it was at the last render.
+    // `blockedReason` above is a render-time closure and the caller spends tens of seconds
+    // generating the proof before reaching this line, so the window can close in between. Without
+    // this the wallet is asked to sign a transaction the contract will revert.
+    const lateReason = timeBlockedReason();
+    if (lateReason) throw new Error(lateReason);
 
     const hash = await writeContractAsync({
       chainId: PUB_CHAIN.id,
