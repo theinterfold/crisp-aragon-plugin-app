@@ -40,6 +40,7 @@ export const VoteCard = ({
   error,
   options,
   voteStartDate,
+  voteEndDate,
   disabled,
   isLoading,
   onClickVote,
@@ -86,8 +87,8 @@ export const VoteCard = ({
         {error && <p className="text-sm text-critical-500">{error}</p>}
 
         <p className="vp-note">
-          Submit your vote to the CRISP server. You can override it any time during the voting window. Results are
-          tallied by the committee after the period ends.
+          Submit your vote before {unixTimestampToDate(voteEndDate)}. You can replace it before this cutoff. Leave
+          enough time for local encryption and proof generation.
         </p>
 
         {(isLoading || txHash || votingStep === "error" || votingStep === "complete") && (

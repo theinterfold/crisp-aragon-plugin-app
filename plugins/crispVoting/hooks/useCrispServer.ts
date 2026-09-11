@@ -61,6 +61,8 @@ interface CrispServerState {
   canPublishOnChain: boolean;
   /** Why the on-chain route is unavailable, when it is. */
   onChainBlockedReason?: string;
+  /** Last timestamp at which the E3 can accept a new ballot commitment. */
+  inputCommitmentDeadline?: bigint;
 }
 
 interface VoteResponse {
@@ -97,6 +99,9 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     publish: publishVoteOnChain,
     canPublish: canPublishOnChain,
     blockedReason: onChainBlockedReason,
+    isLoading: ballotWindowLoading,
+    commitmentDeadline: inputCommitmentDeadline,
+    timeBlockedReason: ballotWindowBlockedReason,
   } = usePublishVote(e3Id);
 
   const resolveCommitteeKey = useCommitteeKeyCheck(e3Id);
@@ -254,21 +259,18 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       // Bail out before signing and proof generation when the chain stage or input window
       // already blocks on-chain publication. `canPublish` is false while the preconditions are
       // still being read too, in which case there is no reason to report yet.
-      if (submitOnChain && !canPublishOnChain) {
+      if (ballotWindowLoading || !canPublishOnChain) {
         const reason =
-          onChainBlockedReason ??
-          "Still checking whether this round accepts on-chain votes. Please try again in a moment.";
+          onChainBlockedReason ?? "Still checking whether this round accepts votes. Please try again in a moment.";
         setError(reason);
         setVotingStep("error");
         setStepMessage(reason);
         return;
       }
 
-      // The committee key comes from `CommitteePublished` logs, falling back to the CRISP server
-      // only when the key was never published on-chain. Either way it is accepted only if its
-      // recomputed BFV commitment matches the round's on-chain `committeePublicKey`, so nobody —
-      // relayer or log spammer — can substitute a key they hold the secret for and decrypt the
-      // ballot. Resolved BEFORE anything is encrypted to it.
+      // The committee key is reconstructed from its on-chain chunk events. The CRISP server is a
+      // fallback source for the same bytes. In both cases, the app recomputes the BFV commitment
+      // and compares it with the commitment stored for the E3 before it encrypts a ballot.
       const resolved = await resolveCommitteeKey(toKeyBytes(roundState.committee_public_key));
       if (!resolved.key || !resolved.presetName) {
         const reason = resolved.reason ?? "The committee public key could not be verified.";
@@ -399,6 +401,21 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       // proven locally, and `encodedProof` is already the exact payload `publishInput` decodes.
       // The only difference is who sends the transaction — the voter, or the CRISP server acting
       // as a relayer.
+      //
+      // Re-checked HERE, once, covering both routes. Every guard above was evaluated when the
+      // component rendered, and the work between then and now — committee-key resolution, circuit
+      // download, the wallet signature, proof generation — takes tens of seconds. A round that was
+      // open at render can be closed by the time the payload is ready, and the relay route is no
+      // safer than the direct one: the server submits the same expired proof to the same
+      // `publishInput`, so it reverts there instead of here.
+      const expiredReason = ballotWindowBlockedReason();
+      if (expiredReason) {
+        setError(expiredReason);
+        setVotingStep("error");
+        setStepMessage(expiredReason);
+        return;
+      }
+
       if (submitOnChain) {
         setStepMessage("Publishing your vote on-chain...");
 
@@ -462,5 +479,6 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     txHash,
     canPublishOnChain,
     onChainBlockedReason,
+    inputCommitmentDeadline,
   };
 }

@@ -13,6 +13,7 @@ import type { RawAction } from "@/utils/types";
 import { Else, ElseIf, If, Then } from "@/components/if";
 import { MainSection } from "@/components/layout/main-section";
 import { DURATION_UNITS, useCreateProposal } from "../hooks/useCreateProposal";
+import { formatDuration } from "../utils/proposalTiming";
 import { useAccount } from "wagmi";
 import { useCanCreateProposal } from "../hooks/useCanCreateProposal";
 import { MissingContentView } from "@/components/MissingContentView";
@@ -60,6 +61,7 @@ export default function Create() {
     durationValue,
     durationUnit,
     durationSeconds,
+    proposalTiming,
     setDurationValue,
     setDurationUnit,
     credits,
@@ -71,11 +73,6 @@ export default function Create() {
     optionLabels,
     setOptionLabels,
   } = useCreateProposal();
-
-  // Singularised so the hint reads "1 day" rather than "1 days". Falls back to a neutral phrase
-  // while the field is empty, so the sentence never renders as "closes NaN days later".
-  const durationSummary =
-    durationSeconds > 0 ? `${durationValue} ${durationValue === 1 ? durationUnit.slice(0, -1) : durationUnit}` : "…";
 
   const handleTitleInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(event?.target?.value);
@@ -137,8 +134,8 @@ export default function Create() {
           onDelegated={refetchCanCreate}
         >
           <p className="form-intro">
-            A proposal becomes <em>active</em> the moment it is mined. Voters then have the window you set to cast
-            encrypted ballots — tallies decrypt only once that window closes.
+            A proposal becomes <em>active</em> when it is mined. Encrypted voting opens after the committee key is
+            ready. The proposal duration includes committee setup and Avail finalization.
           </p>
           <div className="mb-6">
             <InputText
@@ -234,11 +231,11 @@ export default function Create() {
             </span>
           </div>
 
-          {/* Voting duration */}
+          {/* Proposal timing */}
           <div className="mb-6 flex flex-col gap-y-2">
-            <label className="text-base font-normal leading-tight text-neutral-800">Voting duration *</label>
             <div className="flex items-start gap-x-3">
               <InputNumber
+                label="Proposal duration *"
                 className="flex-1"
                 min={1}
                 value={Number.isFinite(durationValue) ? durationValue : ""}
@@ -254,9 +251,42 @@ export default function Create() {
                 ))}
               </DropdownContainer>
             </div>
-            <p className="text-sm font-normal leading-normal text-neutral-500">
-              Voting opens as soon as the proposal is created, and closes {durationSummary} later.
-            </p>
+            {proposalTiming.isLoading && (
+              <p className="text-sm font-normal leading-normal text-neutral-500">Loading the live timing rules…</p>
+            )}
+            {proposalTiming.error && (
+              <p className="text-sm font-normal leading-normal text-critical-500">
+                The app cannot verify the live timing rules. Proposal submission is disabled.
+              </p>
+            )}
+            {proposalTiming.timing && (
+              <div className="flex flex-col gap-y-1 text-sm font-normal leading-normal text-neutral-500">
+                <p>
+                  Committee setup can take up to {formatDuration(proposalTiming.timing.committeeSetupWindow)}. Voting
+                  opens when the committee key is ready.
+                </p>
+                <p>
+                  New ballots close {formatDuration(proposalTiming.timing.availabilityFinalizationWindow)} before the
+                  proposal ends. The reserved time lets Avail finalize committed ballots.
+                </p>
+                <p>
+                  This duration guarantees at least {formatDuration(proposalTiming.timing.guaranteedVotingDuration)} to
+                  vote.
+                </p>
+                <p>The contract starts this duration when the proposal transaction is mined.</p>
+                {proposalTiming.timing.configurationConflict ? (
+                  <p className="text-critical-500">
+                    The live timing settings conflict: the minimum duration is greater than the maximum. Proposal
+                    submission is disabled.
+                  </p>
+                ) : (
+                  <p className={proposalTiming.timing.valid ? "text-neutral-500" : "text-critical-500"}>
+                    The selectable range is {formatDuration(proposalTiming.timing.minimumProposalDuration)} to{" "}
+                    {formatDuration(proposalTiming.timing.maximumProposalDuration)}.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/** CRISP Configuration */}
@@ -453,6 +483,9 @@ export default function Create() {
                 isLoading={isCreating || canCreateLoading}
                 size="lg"
                 variant="primary"
+                disabled={
+                  proposalTiming.isLoading || Boolean(proposalTiming.error) || proposalTiming.timing?.valid !== true
+                }
                 onClick={() => submitProposal()}
               >
                 <If lengthOf={actions} above={0}>

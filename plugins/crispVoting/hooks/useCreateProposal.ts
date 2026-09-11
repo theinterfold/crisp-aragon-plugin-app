@@ -13,6 +13,8 @@ import { CreditsMode } from "../utils/types";
 import { useFeeEscrow } from "./useFeeEscrow";
 import { readInsufficientFeeCredit } from "../utils/feeCredit";
 import { useProposalFeeQuote } from "./useProposalFeeQuote";
+import { useProposalTiming } from "./useProposalTiming";
+import { formatDuration } from "../utils/proposalTiming";
 
 const UrlRegex = new RegExp(URL_PATTERN);
 
@@ -82,6 +84,7 @@ export function useCreateProposal() {
     () => (Number.isFinite(durationValue) ? Math.trunc(durationValue) * DURATION_UNIT_SECONDS[durationUnit] : 0),
     [durationValue, durationUnit]
   );
+  const proposalTiming = useProposalTiming(durationSeconds);
 
   // This runs during render, so it must not throw on a half-filled form: an empty number input
   // gives NaN, and `BigInt(NaN)` is a RangeError that takes the whole page down rather than
@@ -121,6 +124,45 @@ export function useCreateProposal() {
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
       return addAlert("Invalid proposal duration", {
         description: "Set how long the complete proposal input window should stay open",
+        type: "error",
+      });
+    }
+
+    if (proposalTiming.isLoading) {
+      return addAlert("Proposal timing is loading", {
+        description: "Wait for the live protocol timing rules before you submit the proposal",
+        type: "error",
+      });
+    }
+
+    if (proposalTiming.error || !proposalTiming.timing) {
+      return addAlert("Proposal timing is unavailable", {
+        description: "The app could not verify the live protocol timing rules",
+        type: "error",
+      });
+    }
+
+    if (proposalTiming.timing.configurationConflict) {
+      return addAlert("Protocol timing settings conflict", {
+        description: "The live minimum duration is greater than the live maximum duration",
+        type: "error",
+      });
+    }
+
+    if (proposalTiming.timing.tooShort) {
+      return addAlert("Proposal duration is too short", {
+        description: `The live contracts require at least ${formatDuration(
+          proposalTiming.timing.minimumProposalDuration
+        )}`,
+        type: "error",
+      });
+    }
+
+    if (proposalTiming.timing.tooLong) {
+      return addAlert("Proposal duration is too long", {
+        description: `The live protocol allows at most ${formatDuration(
+          proposalTiming.timing.maximumProposalDuration
+        )} before compute and decryption`,
         type: "error",
       });
     }
@@ -227,6 +269,7 @@ export function useCreateProposal() {
     durationValue,
     durationUnit,
     durationSeconds,
+    proposalTiming,
     setDurationValue,
     setDurationUnit,
     credits,

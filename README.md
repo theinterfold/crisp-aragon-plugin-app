@@ -80,6 +80,20 @@ NEXT_PUBLIC_PINATA_JWT="..."
 - `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` can be obtained by signing up at [WalletConnect](https://walletconnect.com/) and creating a new project.
 - `NEXT_PUBLIC_IPFS_ENDPOINTS` and `NEXT_PUBLIC_PINATA_JWT` are needed to ensure we can save proposal details on IPFS
 
+### Proposal timing
+
+The proposal form reads its timing limits from the configured CRISP Voting plugin, Interfold,
+Ciphernode Registry, and CRISP program. It does not use a separate hard-coded protocol minimum. The
+configured plugin must expose `crispProgram()` so the app reads the same CRISP program that will
+receive the new E3 request.
+
+The selected duration includes committee setup, encrypted voting, and the final Avail finalization
+period. The form shows the guaranteed voting time and rejects durations that the live contracts
+would reject. The app uses `createProposalWithDuration`, so the input window starts in the block
+that mines the proposal and cannot lose time while a wallet transaction is pending. New ballots
+stop at the CRISP program's `inputCommitmentDeadline`; the proposal page shows this cutoff instead
+of presenting the complete input-window end as the voting deadline.
+
 ## License 📜
 
 The Governance App Template is released under the AGPL v3 License.

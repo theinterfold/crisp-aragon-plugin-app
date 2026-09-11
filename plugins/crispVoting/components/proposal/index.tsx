@@ -93,7 +93,7 @@ export default function ProposalCard(props: ProposalInputs) {
           {isActive && endDate > Date.now() && !isCommitteeReady
             ? "Forming committee"
             : isActive && endDate > Date.now()
-              ? `Ends ${unixTimestampToDate(Math.round(endDate / 1000))}`
+              ? `Proposal ends ${unixTimestampToDate(Math.round(endDate / 1000))}`
               : capitalize(proposalStatus)}
         </span>
         {totalVotes > BigInt(0) && (

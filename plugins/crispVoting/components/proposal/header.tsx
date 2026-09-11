@@ -18,27 +18,38 @@ interface ProposalHeaderProps {
   /** Whether the ciphernode committee has published its key. Until it has, a ballot cannot be
    *  encrypted, so the round is open on chain but not votable. */
   isCommitteeReady?: boolean;
+  /** Last timestamp at which a new encrypted ballot can be committed. */
+  votingDeadline?: bigint;
 }
 
-const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, e3Failed, isCommitteeReady }) => {
+const ProposalHeader: React.FC<ProposalHeaderProps> = ({
+  proposalIdx,
+  proposal,
+  e3Failed,
+  isCommitteeReady,
+  votingDeadline,
+}) => {
   const proposalStatus = useProposalStatus(proposal, e3Failed);
-  const countdown = useCountdown(Number(proposal.parameters.endDate) * 1000);
+  const votingDeadlineMs = Number(votingDeadline ?? proposal.parameters.endDate) * 1000;
+  const countdown = useCountdown(votingDeadlineMs);
 
   const statusClass = (proposalStatus ?? "").toString().toLowerCase();
   const isEmergency = proposal.parameters.startDate === 0n;
   const endDateIsInThePast = Number(proposal.parameters.endDate) * 1000 < Date.now();
+  const votingIsClosed = votingDeadline !== undefined && votingDeadlineMs <= Date.now();
 
   let endLabel: string;
   if (e3Failed) endLabel = "Round failed";
   else if (proposalStatus === ProposalStatus.ACCEPTED) endLabel = "Accepted";
   else if (proposalStatus === ProposalStatus.REJECTED) endLabel = "Rejected";
-  else if (endDateIsInThePast) endLabel = "Voting closed";
+  else if (endDateIsInThePast) endLabel = "Proposal ended";
+  else if (votingIsClosed) endLabel = "Finalizing committed votes";
   // A countdown is a promise that there is something to do before it runs out. Until the
   // committee publishes its key there is no key to encrypt a ballot against, so the round is open
   // on chain and unvotable in practice — and the vote panel below already says so. Checked after
   // the closed cases: a finished round is not "forming", it is over.
   else if (!isCommitteeReady) endLabel = "Forming committee";
-  else endLabel = `Ends in ${countdown}`;
+  else endLabel = `Voting closes in ${countdown}`;
 
   return (
     <div className="flex w-full justify-center bg-neutral-0">
@@ -77,7 +88,7 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({ proposalIdx, proposal, 
             <div className="val">{proposalStatus ? capitalizeFirstLetter(proposalStatus) : "—"}</div>
           </div>
           <div className="item">
-            <div className="lbl">{endDateIsInThePast ? "Window" : "Ends"}</div>
+            <div className="lbl">Timing</div>
             <div className="val">{endLabel}</div>
           </div>
         </div>
