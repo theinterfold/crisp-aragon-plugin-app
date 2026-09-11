@@ -270,7 +270,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       // relayer or log spammer — can substitute a key they hold the secret for and decrypt the
       // ballot. Resolved BEFORE anything is encrypted to it.
       const resolved = await resolveCommitteeKey(toKeyBytes(roundState.committee_public_key));
-      if (!resolved.key) {
+      if (!resolved.key || !resolved.presetName) {
         const reason = resolved.reason ?? "The committee public key could not be verified.";
         setError(reason);
         setVotingStep("error");
@@ -279,6 +279,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       }
 
       const publicKey = resolved.key;
+      const presetName = resolved.presetName;
 
       // Resolved before the ballot is built: an ONCHAIN round takes its weight from this contract
       // rather than from a census, so the program has to be known first.
@@ -320,8 +321,10 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
       };
 
       // The BFV circuits are preset-bound and must be registered before any encryption or
-      // proving. Loaded lazily so the matching artifact bundle only downloads when voting.
-      await ensureCircuits(paramSet);
+      // proving. The preset comes from the round's on-chain parameters — resolved alongside the
+      // committee key — so a round running secure parameters proves against secure circuits with
+      // no change here. Loaded lazily so the matching artifact bundle only downloads when voting.
+      await ensureCircuits(presetName);
 
       // The SDK's own prepareBallot (not the standalone one): it resolves the slot's head —
       // previous ciphertext plus its tree index — from the server and threads the pair into the

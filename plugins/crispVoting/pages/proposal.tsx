@@ -46,7 +46,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
   } = useCrispServer(proposal?.e3Id);
   // Eligibility is the token's delegated power at the proposal's snapshot, not a plugin call.
   const canVote = useCanVote(proposal?.e3Id, proposal?.parameters.snapshotBlock);
-  const { balance, delegatesTo } = useTokenVotes(address);
+  const { balance, votingPower, delegatesTo } = useTokenVotes(address);
 
   const showProposalLoading = getShowProposalLoading(proposal, proposalFetchStatus);
   const proposalStatus = useProposalStatus(proposal!, e3Failed);
@@ -79,6 +79,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
   };
 
   const hasBalance = !!balance && balance > ZERO;
+  const hasUnrepresentedBalance = hasBalance && votingPower !== undefined && votingPower < balance;
   const delegatingToSomeoneElse = !!delegatesTo && delegatesTo !== address && delegatesTo !== ADDRESS_ZERO;
   const delegatedToZero = !!delegatesTo && delegatesTo === ADDRESS_ZERO;
 
@@ -103,7 +104,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
         <div className="flex w-full flex-col gap-x-12 gap-y-6 md:flex-row">
           <div className="flex flex-col gap-y-6 md:w-[63%] md:shrink-0">
             <BodySection body={proposal.description || "No description was provided"} />
-            <If all={[hasBalance, delegatingToSomeoneElse || delegatedToZero]}>
+            <If all={[hasUnrepresentedBalance, delegatingToSomeoneElse || delegatedToZero]}>
               <NoVotePowerWarning
                 delegatingToSomeoneElse={delegatingToSomeoneElse}
                 delegatesTo={delegatesTo}
@@ -217,7 +218,7 @@ const NoVotePowerWarning = ({
         delegatingToSomeoneElse
           ? "Your voting power is currently delegated"
           : canVote
-            ? "You cannot vote on new proposals"
+            ? "Some voting power will not count on new proposals"
             : "You cannot vote"
       }
       variant="info"
