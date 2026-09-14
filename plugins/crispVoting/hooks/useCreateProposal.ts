@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ProposalMetadata, RawAction } from "@/utils/types";
 import { useAlerts } from "@/context/Alerts";
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS } from "@/constants";
@@ -14,7 +14,7 @@ import { useFeeEscrow } from "./useFeeEscrow";
 import { readInsufficientFeeCredit } from "../utils/feeCredit";
 import { useProposalFeeQuote } from "./useProposalFeeQuote";
 import { useProposalTiming } from "./useProposalTiming";
-import { formatDuration } from "../utils/proposalTiming";
+import { formatDateTimeLocal, formatDuration } from "../utils/proposalTiming";
 
 const UrlRegex = new RegExp(URL_PATTERN);
 
@@ -47,11 +47,8 @@ export function useCreateProposal() {
   // to be filled in or removed. The form already renders an empty state and an "Add resource"
   // button, which is the honest way to offer something optional.
   const [resources, setResources] = useState<{ name: string; url: string }[]>([]);
-  // A duration, not a pair of absolute dates.
-  //
-  // The proposal input window starts when the create transaction is mined. Encrypted ballots can
-  // be submitted after the committee key is ready. A duration avoids an absolute end date becoming
-  // stale while metadata uploads and funding transactions complete.
+  // The selected start is fixed. The duration covers voting only; Avail finalization follows it.
+  const [startDateLocal, setStartDateLocal] = useState("");
   const [durationValue, setDurationValue] = useState<number>(5);
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("days");
 
@@ -84,7 +81,13 @@ export function useCreateProposal() {
     () => (Number.isFinite(durationValue) ? Math.trunc(durationValue) * DURATION_UNIT_SECONDS[durationUnit] : 0),
     [durationValue, durationUnit]
   );
-  const proposalTiming = useProposalTiming(durationSeconds);
+  const votingStartAt = useMemo(() => Math.floor(new Date(startDateLocal).getTime() / 1000), [startDateLocal]);
+  const proposalTiming = useProposalTiming(durationSeconds, votingStartAt);
+  useEffect(() => {
+    if (!startDateLocal && proposalTiming.timing) {
+      setStartDateLocal(formatDateTimeLocal(proposalTiming.timing.recommendedVotingStartAt));
+    }
+  }, [startDateLocal, proposalTiming.timing?.recommendedVotingStartAt]);
 
   // This runs during render, so it must not throw on a half-filled form: an empty number input
   // gives NaN, and `BigInt(NaN)` is a RangeError that takes the whole page down rather than
@@ -100,7 +103,7 @@ export function useCreateProposal() {
     [numOptions, creditsMode, credits]
   );
 
-  const feeQuote = useProposalFeeQuote(durationSeconds, data);
+  const feeQuote = useProposalFeeQuote(votingStartAt, votingStartAt + durationSeconds, data);
 
   const submitProposal = async () => {
     // Check metadata
@@ -118,12 +121,10 @@ export function useCreateProposal() {
       });
     }
 
-    // A duration is required: the contract's `_endDate = 0` shorthand means "the earliest date
-    // minDuration allows", which for a plugin configured with minDuration 0 is a vote that closes
-    // in the same block. Demand an explicit window rather than silently creating one.
+    // Require an explicit voting window rather than using the plugin's zero-date shorthand.
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-      return addAlert("Invalid proposal duration", {
-        description: "Set how long the complete proposal input window should stay open",
+      return addAlert("Invalid voting duration", {
+        description: "Set how long people can submit ballots",
         type: "error",
       });
     }
@@ -149,19 +150,31 @@ export function useCreateProposal() {
       });
     }
 
+    if (proposalTiming.timing.invalidStart) {
+      return addAlert("Invalid voting start", {
+        description: "Choose a valid date and time for voting to start",
+        type: "error",
+      });
+    }
+
+    if (proposalTiming.timing.tooEarly) {
+      return addAlert("Voting starts too early", {
+        description: `Committee setup can take ${formatDuration(proposalTiming.timing.committeeSetupWindow)}. Choose a later start time.`,
+        type: "error",
+      });
+    }
+
     if (proposalTiming.timing.tooShort) {
-      return addAlert("Proposal duration is too short", {
-        description: `The live contracts require at least ${formatDuration(
-          proposalTiming.timing.minimumProposalDuration
-        )}`,
+      return addAlert("Voting duration is too short", {
+        description: `The live contracts require at least ${formatDuration(proposalTiming.timing.minimumVotingWindow)}`,
         type: "error",
       });
     }
 
     if (proposalTiming.timing.tooLong) {
-      return addAlert("Proposal duration is too long", {
+      return addAlert("Voting duration is too long", {
         description: `The live protocol allows at most ${formatDuration(
-          proposalTiming.timing.maximumProposalDuration
+          proposalTiming.timing.maximumVotingWindow
         )} before compute and decryption`,
         type: "error",
       });
@@ -196,13 +209,13 @@ export function useCreateProposal() {
 
       const ipfsPin = await uploadToPinata(JSON.stringify(proposalMetadataJsonObject));
 
-      const buildArgs = () => [toHex(ipfsPin), actions, BigInt(durationSeconds), data] as const;
+      const buildArgs = () =>
+        [toHex(ipfsPin), actions, BigInt(votingStartAt), BigInt(votingStartAt + durationSeconds), data] as const;
 
       // The plugin debits escrowed credit rather than pulling the fee from the caller, so the
       // credit has to cover the E3 quote BEFORE the create transaction is sent. `quoteFee` shows
       // the price up front and the escrow panel lets the user deposit it, but this stays as a
-      // safety net: an unset start date normalises to `block.timestamp` on-chain, so the window
-      // — and the fee — can move between the quote and this transaction.
+      // safety net: fees or live timing settings can change after the quote.
       // Not optional-chained on purpose: `client?.simulateContract(...)` resolves to `undefined`
       // when there is no client, which reads as "the simulation passed" and skips the funding
       // check entirely — the create transaction would then revert with InsufficientFeeCredit.
@@ -213,7 +226,7 @@ export function useCreateProposal() {
           account: selfAddress,
           abi: CrispVotingAbi,
           address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-          functionName: "createProposalWithDuration",
+          functionName: "createProposal",
           args: buildArgs(),
         })
         .then(() => undefined)
@@ -228,13 +241,22 @@ export function useCreateProposal() {
       if (shortfall) {
         await deposit(shortfall.missing);
         refetchEscrow();
+        // Funding may take several blocks. Recheck the fixed start and the credit after it
+        // confirms so an expired schedule or failed deposit does not reach the create write.
+        await client.simulateContract({
+          account: selfAddress,
+          abi: CrispVotingAbi,
+          address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
+          functionName: "createProposal",
+          args: buildArgs(),
+        });
       }
 
       await createProposalWrite({
         chainId: PUB_CHAIN.id,
         abi: CrispVotingAbi,
         address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
-        functionName: "createProposalWithDuration",
+        functionName: "createProposal",
         args: buildArgs(),
       });
     } catch (err) {
@@ -269,6 +291,8 @@ export function useCreateProposal() {
     durationValue,
     durationUnit,
     durationSeconds,
+    startDateLocal,
+    setStartDateLocal,
     proposalTiming,
     setDurationValue,
     setDurationUnit,
