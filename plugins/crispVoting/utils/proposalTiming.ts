@@ -27,6 +27,8 @@ export type ProposalTiming = ProposalTimingConfig & {
   valid: boolean;
 };
 
+export const SUGGESTED_START_BUFFER_SECONDS = 600;
+
 /** Calculate a fixed vote schedule from the live contract settings. */
 export function calculateProposalTiming(
   duration: number,
@@ -36,7 +38,7 @@ export function calculateProposalTiming(
 ): ProposalTiming {
   const committeeSetupWindow = config.randomnessRequestTimeout + config.sortitionSubmissionWindow + config.dkgWindow;
   const earliestVotingStartAt = now + committeeSetupWindow;
-  const recommendedVotingStartAt = Math.ceil((earliestVotingStartAt + 120) / 60) * 60;
+  const recommendedVotingStartAt = Math.ceil((earliestVotingStartAt + SUGGESTED_START_BUFFER_SECONDS) / 60) * 60;
   const minimumVotingWindow = Math.max(config.pluginMinimumDuration, config.minimumVotingDuration);
   const maximumAtEarliest =
     config.maximumLifecycleDuration -

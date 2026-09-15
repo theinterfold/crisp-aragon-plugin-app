@@ -49,6 +49,7 @@ export function useCreateProposal() {
   const [resources, setResources] = useState<{ name: string; url: string }[]>([]);
   // The selected start is fixed. The duration covers voting only; Avail finalization follows it.
   const [startDateLocal, setStartDateLocal] = useState("");
+  const [usingSuggestedStart, setUsingSuggestedStart] = useState(true);
   const [durationValue, setDurationValue] = useState<number>(5);
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("days");
 
@@ -84,10 +85,23 @@ export function useCreateProposal() {
   const votingStartAt = useMemo(() => Math.floor(new Date(startDateLocal).getTime() / 1000), [startDateLocal]);
   const proposalTiming = useProposalTiming(durationSeconds, votingStartAt);
   useEffect(() => {
-    if (!startDateLocal && proposalTiming.timing) {
+    if (usingSuggestedStart && proposalTiming.timing) {
+      const suggested = formatDateTimeLocal(proposalTiming.timing.recommendedVotingStartAt);
+      if (suggested !== startDateLocal) setStartDateLocal(suggested);
+    }
+  }, [startDateLocal, usingSuggestedStart, proposalTiming.timing?.recommendedVotingStartAt]);
+
+  const updateVotingStart = (value: string) => {
+    setUsingSuggestedStart(false);
+    setStartDateLocal(value);
+  };
+
+  const useSuggestedVotingStart = () => {
+    setUsingSuggestedStart(true);
+    if (proposalTiming.timing) {
       setStartDateLocal(formatDateTimeLocal(proposalTiming.timing.recommendedVotingStartAt));
     }
-  }, [startDateLocal, proposalTiming.timing?.recommendedVotingStartAt]);
+  };
 
   // This runs during render, so it must not throw on a half-filled form: an empty number input
   // gives NaN, and `BigInt(NaN)` is a RangeError that takes the whole page down rather than
@@ -292,7 +306,8 @@ export function useCreateProposal() {
     durationUnit,
     durationSeconds,
     startDateLocal,
-    setStartDateLocal,
+    updateVotingStart,
+    useSuggestedVotingStart,
     proposalTiming,
     setDurationValue,
     setDurationUnit,

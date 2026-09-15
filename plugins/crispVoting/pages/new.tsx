@@ -13,7 +13,7 @@ import type { RawAction } from "@/utils/types";
 import { Else, ElseIf, If, Then } from "@/components/if";
 import { MainSection } from "@/components/layout/main-section";
 import { DURATION_UNITS, useCreateProposal } from "../hooks/useCreateProposal";
-import { formatDateTimeLocal, formatDuration } from "../utils/proposalTiming";
+import { formatDuration } from "../utils/proposalTiming";
 import { useAccount } from "wagmi";
 import { useCanCreateProposal } from "../hooks/useCanCreateProposal";
 import { MissingContentView } from "@/components/MissingContentView";
@@ -62,7 +62,8 @@ export default function Create() {
     durationUnit,
     durationSeconds,
     startDateLocal,
-    setStartDateLocal,
+    updateVotingStart,
+    useSuggestedVotingStart,
     proposalTiming,
     setDurationValue,
     setDurationUnit,
@@ -243,17 +244,14 @@ export default function Create() {
               type="datetime-local"
               className="h-12 rounded-lg border border-neutral-200 bg-neutral-0 px-3 text-neutral-800"
               value={startDateLocal}
-              onChange={(event) => setStartDateLocal(event.target.value)}
+              onChange={(event) => updateVotingStart(event.target.value)}
               disabled={isCreating}
             />
             {proposalTiming.timing && (
               <button
                 type="button"
                 className="self-start text-sm text-primary-500 underline"
-                onClick={() =>
-                  proposalTiming.timing &&
-                  setStartDateLocal(formatDateTimeLocal(proposalTiming.timing.recommendedVotingStartAt))
-                }
+                onClick={useSuggestedVotingStart}
                 disabled={isCreating}
               >
                 Use suggested start
@@ -302,7 +300,7 @@ export default function Create() {
                   {new Date(proposalTiming.timing.earliestVotingStartAt * 1000).toLocaleString()}.
                 </p>
                 <p>
-                  The suggested start includes a two-minute transaction buffer. If the key arrives early, voting still
+                  The suggested start includes a ten-minute transaction buffer. If the key arrives early, voting still
                   waits for the selected time. If the key misses its deadline, the vote does not move later.
                 </p>
                 {!proposalTiming.timing.invalidStart && (

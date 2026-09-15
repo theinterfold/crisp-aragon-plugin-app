@@ -3,6 +3,7 @@ import {
   calculateProposalTiming,
   formatDateTimeLocal,
   formatDuration,
+  SUGGESTED_START_BUFFER_SECONDS,
 } from "../plugins/crispVoting/utils/proposalTiming";
 
 const mainnetTiming = {
@@ -51,11 +52,16 @@ describe("fixed proposal timing", () => {
   });
 
   test("keeps voting end separate from Avail finalization", () => {
-    const timing = calculateProposalTiming(5 * 86_400, mainnetTiming, earliestStart + 120, now);
+    const timing = calculateProposalTiming(
+      5 * 86_400,
+      mainnetTiming,
+      earliestStart + SUGGESTED_START_BUFFER_SECONDS,
+      now
+    );
 
     expect(timing.valid).toBe(true);
     expect(timing.availabilityEndsAt - timing.votingEndAt).toBe(10_800);
-    expect(timing.recommendedVotingStartAt).toBeGreaterThanOrEqual(earliestStart + 120);
+    expect(timing.recommendedVotingStartAt).toBeGreaterThanOrEqual(earliestStart + SUGGESTED_START_BUFFER_SECONDS);
     expect(formatDuration(timing.availabilityFinalizationWindow)).toBe("3 hours");
   });
 
