@@ -85,7 +85,7 @@ export function useCreateProposal() {
   const votingStartAt = useMemo(() => Math.floor(new Date(startDateLocal).getTime() / 1000), [startDateLocal]);
   const proposalTiming = useProposalTiming(durationSeconds, votingStartAt);
   useEffect(() => {
-    if (usingSuggestedStart && proposalTiming.timing) {
+    if (usingSuggestedStart && proposalTiming.timing && proposalTiming.timing.recommendedVotingStartAt !== null) {
       const suggested = formatDateTimeLocal(proposalTiming.timing.recommendedVotingStartAt);
       if (suggested !== startDateLocal) setStartDateLocal(suggested);
     }
@@ -98,7 +98,7 @@ export function useCreateProposal() {
 
   const useSuggestedVotingStart = () => {
     setUsingSuggestedStart(true);
-    if (proposalTiming.timing) {
+    if (proposalTiming.timing && proposalTiming.timing.recommendedVotingStartAt !== null) {
       setStartDateLocal(formatDateTimeLocal(proposalTiming.timing.recommendedVotingStartAt));
     }
   };

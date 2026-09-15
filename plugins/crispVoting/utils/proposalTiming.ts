@@ -13,7 +13,7 @@ export type ProposalTimingConfig = {
 export type ProposalTiming = ProposalTimingConfig & {
   committeeSetupWindow: number;
   earliestVotingStartAt: number;
-  recommendedVotingStartAt: number;
+  recommendedVotingStartAt: number | null;
   votingStartAt: number;
   votingEndAt: number;
   availabilityEndsAt: number;
@@ -38,14 +38,18 @@ export function calculateProposalTiming(
 ): ProposalTiming {
   const committeeSetupWindow = config.randomnessRequestTimeout + config.sortitionSubmissionWindow + config.dkgWindow;
   const earliestVotingStartAt = now + committeeSetupWindow;
-  const recommendedVotingStartAt = Math.ceil((earliestVotingStartAt + SUGGESTED_START_BUFFER_SECONDS) / 60) * 60;
   const minimumVotingWindow = Math.max(config.pluginMinimumDuration, config.minimumVotingDuration);
-  const maximumAtEarliest =
-    config.maximumLifecycleDuration -
-    committeeSetupWindow -
-    config.availabilityFinalizationWindow -
-    config.computeWindow -
-    config.decryptionWindow;
+  const lifecycleTail = config.availabilityFinalizationWindow + config.computeWindow + config.decryptionWindow;
+  const maximumAtEarliest = config.maximumLifecycleDuration - committeeSetupWindow - lifecycleTail;
+  const configurationConflict = minimumVotingWindow > maximumAtEarliest;
+  const earliestWholeMinute = Math.ceil(earliestVotingStartAt / 60) * 60;
+  const latestWholeMinute =
+    Math.floor((now + config.maximumLifecycleDuration - lifecycleTail - minimumVotingWindow) / 60) * 60;
+  const bufferedWholeMinute = Math.ceil((earliestVotingStartAt + SUGGESTED_START_BUFFER_SECONDS) / 60) * 60;
+  const recommendedVotingStartAt =
+    configurationConflict || earliestWholeMinute > latestWholeMinute
+      ? null
+      : Math.min(bufferedWholeMinute, latestWholeMinute);
   const invalidStart = !Number.isSafeInteger(requestedStartAt) || requestedStartAt <= 0;
   const votingStartAt = invalidStart ? 0 : requestedStartAt;
   const votingEndAt = votingStartAt + duration;
@@ -59,7 +63,6 @@ export function calculateProposalTiming(
       config.decryptionWindow
   );
   const finiteDuration = Number.isFinite(duration) && duration > 0;
-  const configurationConflict = minimumVotingWindow > maximumAtEarliest;
   const tooEarly = !invalidStart && votingStartAt < earliestVotingStartAt;
   const tooShort = !finiteDuration || duration < minimumVotingWindow;
   const tooLong = finiteDuration && duration > maximumVotingWindow;

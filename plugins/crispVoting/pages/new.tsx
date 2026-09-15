@@ -247,7 +247,7 @@ export default function Create() {
               onChange={(event) => updateVotingStart(event.target.value)}
               disabled={isCreating}
             />
-            {proposalTiming.timing && (
+            {proposalTiming.timing && proposalTiming.timing.recommendedVotingStartAt !== null && (
               <button
                 type="button"
                 className="self-start text-sm text-primary-500 underline"

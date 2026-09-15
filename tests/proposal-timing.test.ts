@@ -75,6 +75,48 @@ describe("fixed proposal timing", () => {
     expect(calculateProposalTiming(maximum + 1, policy, laterStart, now).tooLong).toBe(true);
   });
 
+  test("clamps the suggested start when less than the ten-minute buffer is available", () => {
+    const minimumVotingWindow = 3_600;
+    const availableStartSlack = 5 * 60;
+    const tightTiming = {
+      ...mainnetTiming,
+      maximumLifecycleDuration:
+        mainnetTiming.randomnessRequestTimeout +
+        mainnetTiming.sortitionSubmissionWindow +
+        mainnetTiming.dkgWindow +
+        mainnetTiming.computeWindow +
+        mainnetTiming.decryptionWindow +
+        mainnetTiming.availabilityFinalizationWindow +
+        minimumVotingWindow +
+        availableStartSlack,
+    };
+    const timing = calculateProposalTiming(minimumVotingWindow, tightTiming, earliestStart, now);
+
+    expect(timing.configurationConflict).toBe(false);
+    expect(timing.recommendedVotingStartAt).toBe(Math.floor((earliestStart + availableStartSlack) / 60) * 60);
+    expect(calculateProposalTiming(minimumVotingWindow, tightTiming, timing.recommendedVotingStartAt!, now).valid).toBe(
+      true
+    );
+  });
+
+  test("omits a suggested start when no whole-minute start is feasible", () => {
+    const tightTiming = {
+      ...mainnetTiming,
+      maximumLifecycleDuration:
+        mainnetTiming.randomnessRequestTimeout +
+        mainnetTiming.sortitionSubmissionWindow +
+        mainnetTiming.dkgWindow +
+        mainnetTiming.computeWindow +
+        mainnetTiming.decryptionWindow +
+        mainnetTiming.availabilityFinalizationWindow +
+        mainnetTiming.minimumVotingDuration,
+    };
+    const timing = calculateProposalTiming(tightTiming.minimumVotingDuration, tightTiming, earliestStart, now + 1);
+
+    expect(timing.configurationConflict).toBe(false);
+    expect(timing.recommendedVotingStartAt).toBeNull();
+  });
+
   test("rejects missing dates and incompatible live settings", () => {
     expect(calculateProposalTiming(3_600, mainnetTiming, NaN, now).invalidStart).toBe(true);
     const timing = calculateProposalTiming(
