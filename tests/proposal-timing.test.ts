@@ -40,15 +40,15 @@ describe("fixed proposal timing", () => {
     expect(calculateProposalTiming(3_600, mainnetTiming, earliestStart - 1, now).valid).toBe(false);
   });
 
-  test("shows the Sepolia 20-minute VRF, five-minute ticket, three-hour DKG floor", () => {
-    const sepolia = {
+  test("uses the configured VRF, ticket, and DKG windows", () => {
+    const configuredWindows = {
       ...mainnetTiming,
       randomnessRequestTimeout: 1_200,
       sortitionSubmissionWindow: 300,
       dkgWindow: 10_800,
     };
-    expect(calculateProposalTiming(3_600, sepolia, now + 7_200, now).tooEarly).toBe(true);
-    expect(calculateProposalTiming(3_600, sepolia, now + 12_300, now).valid).toBe(true);
+    expect(calculateProposalTiming(3_600, configuredWindows, now + 7_200, now).tooEarly).toBe(true);
+    expect(calculateProposalTiming(3_600, configuredWindows, now + 12_300, now).valid).toBe(true);
   });
 
   test("keeps voting end separate from Avail finalization", () => {
