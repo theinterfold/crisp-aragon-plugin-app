@@ -20,6 +20,8 @@ interface ProposalHeaderProps {
   isCommitteeReady?: boolean;
   /** Last timestamp at which a new encrypted ballot can be committed. */
   votingDeadline?: bigint;
+  /** End of the separate Avail finalization period. */
+  availabilityDeadline?: bigint;
 }
 
 const ProposalHeader: React.FC<ProposalHeaderProps> = ({
@@ -28,22 +30,24 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({
   e3Failed,
   isCommitteeReady,
   votingDeadline,
+  availabilityDeadline,
 }) => {
   const proposalStatus = useProposalStatus(proposal, e3Failed);
   const votingDeadlineMs = Number(votingDeadline ?? proposal.parameters.endDate) * 1000;
   const countdown = useCountdown(votingDeadlineMs);
+  const votingStartsAtMs = Number(proposal.parameters.startDate) * 1000;
+  const startsIn = useCountdown(votingStartsAtMs);
 
   const statusClass = (proposalStatus ?? "").toString().toLowerCase();
   const isEmergency = proposal.parameters.startDate === 0n;
-  const endDateIsInThePast = Number(proposal.parameters.endDate) * 1000 < Date.now();
-  const votingIsClosed = votingDeadline !== undefined && votingDeadlineMs <= Date.now();
+  const votingIsClosed = votingDeadlineMs <= Date.now();
 
   let endLabel: string;
   if (e3Failed) endLabel = "Round failed";
   else if (proposalStatus === ProposalStatus.ACCEPTED) endLabel = "Accepted";
   else if (proposalStatus === ProposalStatus.REJECTED) endLabel = "Rejected";
-  else if (endDateIsInThePast) endLabel = "Proposal ended";
   else if (votingIsClosed) endLabel = "Finalizing committed votes";
+  else if (votingStartsAtMs > Date.now()) endLabel = `Voting starts in ${startsIn}`;
   // A countdown is a promise that there is something to do before it runs out. Until the
   // committee publishes its key there is no key to encrypt a ballot against, so the round is open
   // on chain and unvotable in practice — and the vote panel below already says so. Checked after
@@ -91,6 +95,16 @@ const ProposalHeader: React.FC<ProposalHeaderProps> = ({
             <div className="lbl">Timing</div>
             <div className="val">{endLabel}</div>
           </div>
+          <div className="item">
+            <div className="lbl">Ballots close</div>
+            <div className="val">{new Date(votingDeadlineMs).toLocaleString()}</div>
+          </div>
+          {availabilityDeadline !== undefined && (
+            <div className="item">
+              <div className="lbl">Avail finalization ends</div>
+              <div className="val">{new Date(Number(availabilityDeadline) * 1000).toLocaleString()}</div>
+            </div>
+          )}
         </div>
       </HeaderSection>
     </div>

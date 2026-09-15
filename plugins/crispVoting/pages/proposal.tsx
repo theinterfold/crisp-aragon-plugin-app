@@ -44,6 +44,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
     canPublishOnChain,
     onChainBlockedReason,
     inputCommitmentDeadline,
+    availabilityDeadline,
   } = useCrispServer(proposal?.e3Id);
   // Eligibility is the token's delegated power at the proposal's snapshot, not a plugin call.
   const canVote = useCanVote(proposal?.e3Id, proposal?.parameters.snapshotBlock);
@@ -100,6 +101,7 @@ export default function ProposalDetail({ index: proposalIdx }: { index: bigint }
         e3Failed={e3Failed}
         isCommitteeReady={isCommitteeReady}
         votingDeadline={inputCommitmentDeadline}
+        availabilityDeadline={availabilityDeadline}
       />
 
       <div className="mx-auto w-full max-w-screen-xl px-4 py-6 md:px-16 md:pb-20 md:pt-10">
