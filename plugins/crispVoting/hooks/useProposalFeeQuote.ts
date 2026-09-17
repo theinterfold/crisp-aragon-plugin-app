@@ -14,18 +14,16 @@ export type ProposalFeeQuote = {
 /**
  * Quotes the E3 fee for a proposal before creating it.
  *
- * `quoteFeeForDuration` and `createProposalWithDuration` both derive their dates from the current
- * block timestamp. The duration and fee therefore do not drift while the wallet transaction waits
- * to be mined.
+ * The quote uses the same fixed voting dates as `createProposal`. The plugin adds the Avail
+ * finalization window to the Interfold request without changing the displayed vote end.
  *
- * The read also doubles as validation: invalid dates or option counts revert here with the same
- * errors creation would raise, which is why `error` is surfaced rather than swallowed.
+ * The read checks plugin dates and the Interfold quote. CRISP's request-time checks still run
+ * during proposal creation, so the form also checks the live voting minimum and simulates the
+ * write before submitting it.
  */
-export function useProposalFeeQuote(duration: number, data: Hex | undefined): ProposalFeeQuote {
-  // `args` is evaluated even when the query is disabled. Avoid `BigInt(NaN)` while the duration
-  // field is empty.
-  const durationSeconds = Number.isFinite(duration) && duration > 0 ? BigInt(Math.trunc(duration)) : 0n;
-  const enabled = Boolean(data) && durationSeconds > 0n;
+export function useProposalFeeQuote(startAt: number, endAt: number, data: Hex | undefined): ProposalFeeQuote {
+  const validDates = Number.isSafeInteger(startAt) && Number.isSafeInteger(endAt) && startAt > 0 && endAt > startAt;
+  const enabled = Boolean(data) && validDates;
 
   const {
     data: fee,
@@ -35,8 +33,8 @@ export function useProposalFeeQuote(duration: number, data: Hex | undefined): Pr
     chainId: PUB_CHAIN.id,
     address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
     abi: CrispVotingAbi,
-    functionName: "quoteFeeForDuration",
-    args: [durationSeconds, data as Hex],
+    functionName: "quoteFee",
+    args: [BigInt(validDates ? startAt : 0), BigInt(validDates ? endAt : 0), data as Hex],
     query: { enabled },
   });
 

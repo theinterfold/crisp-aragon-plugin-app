@@ -1,6 +1,6 @@
 import { PUB_CHAIN, PUB_CRISP_VOTING_PLUGIN_ADDRESS } from "@/constants";
 import { parseAbi, type Address } from "viem";
-import { useReadContract } from "wagmi";
+import { useBlock, useReadContract } from "wagmi";
 import { calculateProposalTiming, type ProposalTiming } from "../utils/proposalTiming";
 
 const pluginAbi = parseAbi([
@@ -36,7 +36,8 @@ function asSafeNumber(value: bigint | undefined, name: string): number {
 }
 
 /** Read the current protocol timing rules and calculate the selected proposal timeline. */
-export function useProposalTiming(duration: number): ProposalTimingState {
+export function useProposalTiming(duration: number, startAt: number): ProposalTimingState {
+  const blockRead = useBlock({ chainId: PUB_CHAIN.id, watch: true });
   const pluginRead = useReadContract({
     chainId: PUB_CHAIN.id,
     address: PUB_CRISP_VOTING_PLUGIN_ADDRESS,
@@ -111,6 +112,7 @@ export function useProposalTiming(duration: number): ProposalTimingState {
   });
 
   const reads = [
+    blockRead,
     pluginRead,
     programRead,
     pluginMinimumRead,
@@ -127,6 +129,7 @@ export function useProposalTiming(duration: number): ProposalTimingState {
 
   const timeoutConfig = timeoutRead.data as readonly [bigint, bigint, bigint] | undefined;
   const isLoading =
+    !blockRead.data ||
     !interfoldAddress ||
     !programAddress ||
     !registryAddress ||
@@ -142,17 +145,22 @@ export function useProposalTiming(duration: number): ProposalTimingState {
   try {
     return {
       isLoading: false,
-      timing: calculateProposalTiming(duration, {
-        pluginMinimumDuration: asSafeNumber(pluginMinimumRead.data, "plugin minimum duration"),
-        randomnessRequestTimeout: asSafeNumber(randomnessRead.data, "randomness request timeout"),
-        sortitionSubmissionWindow: asSafeNumber(sortitionRead.data, "sortition submission window"),
-        dkgWindow: asSafeNumber(timeoutConfig[0], "DKG window"),
-        computeWindow: asSafeNumber(timeoutConfig[1], "compute window"),
-        decryptionWindow: asSafeNumber(timeoutConfig[2], "decryption window"),
-        maximumLifecycleDuration: asSafeNumber(maximumLifecycleRead.data, "maximum lifecycle duration"),
-        minimumVotingDuration: asSafeNumber(votingRead.data, "minimum voting duration"),
-        availabilityFinalizationWindow: asSafeNumber(availabilityRead.data, "availability finalization window"),
-      }),
+      timing: calculateProposalTiming(
+        duration,
+        {
+          pluginMinimumDuration: asSafeNumber(pluginMinimumRead.data, "plugin minimum duration"),
+          randomnessRequestTimeout: asSafeNumber(randomnessRead.data, "randomness request timeout"),
+          sortitionSubmissionWindow: asSafeNumber(sortitionRead.data, "sortition submission window"),
+          dkgWindow: asSafeNumber(timeoutConfig[0], "DKG window"),
+          computeWindow: asSafeNumber(timeoutConfig[1], "compute window"),
+          decryptionWindow: asSafeNumber(timeoutConfig[2], "decryption window"),
+          maximumLifecycleDuration: asSafeNumber(maximumLifecycleRead.data, "maximum lifecycle duration"),
+          minimumVotingDuration: asSafeNumber(votingRead.data, "minimum voting duration"),
+          availabilityFinalizationWindow: asSafeNumber(availabilityRead.data, "availability finalization window"),
+        },
+        startAt,
+        asSafeNumber(blockRead.data.timestamp, "block timestamp")
+      ),
     };
   } catch (error) {
     return { isLoading: false, error: error as Error };

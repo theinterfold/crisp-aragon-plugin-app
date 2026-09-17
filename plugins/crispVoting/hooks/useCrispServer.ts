@@ -63,6 +63,8 @@ interface CrispServerState {
   onChainBlockedReason?: string;
   /** Last timestamp at which the E3 can accept a new ballot commitment. */
   inputCommitmentDeadline?: bigint;
+  /** End of the availability finalization period. */
+  availabilityDeadline?: bigint;
 }
 
 interface VoteResponse {
@@ -111,6 +113,7 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     blockedReason: onChainBlockedReason,
     isLoading: ballotWindowLoading,
     commitmentDeadline: inputCommitmentDeadline,
+    inputWindowEnd: availabilityDeadline,
     timeBlockedReason: ballotWindowBlockedReason,
   } = usePublishVote(e3Id);
 
@@ -533,5 +536,6 @@ export function useCrispServer(e3Id?: bigint): CrispServerState {
     canPublishOnChain,
     onChainBlockedReason,
     inputCommitmentDeadline,
+    availabilityDeadline,
   };
 }

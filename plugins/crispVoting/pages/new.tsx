@@ -61,6 +61,9 @@ export default function Create() {
     durationValue,
     durationUnit,
     durationSeconds,
+    startDateLocal,
+    updateVotingStart,
+    useSuggestedVotingStart,
     proposalTiming,
     setDurationValue,
     setDurationUnit,
@@ -134,8 +137,8 @@ export default function Create() {
           onDelegated={refetchCanCreate}
         >
           <p className="form-intro">
-            A proposal becomes <em>active</em> when it is mined. Encrypted voting opens after the committee key is
-            ready. The proposal duration includes committee setup and Avail finalization.
+            Choose when voting starts and how long ballots stay open. The committee prepares the key before voting.
+            Avail finalization follows the voting deadline.
           </p>
           <div className="mb-6">
             <InputText
@@ -233,6 +236,27 @@ export default function Create() {
 
           {/* Proposal timing */}
           <div className="mb-6 flex flex-col gap-y-2">
+            <label htmlFor="voting-start" className="text-base font-normal leading-tight text-neutral-800">
+              Voting starts *
+            </label>
+            <input
+              id="voting-start"
+              type="datetime-local"
+              className="h-12 rounded-lg border border-neutral-200 bg-neutral-0 px-3 text-neutral-800"
+              value={startDateLocal}
+              onChange={(event) => updateVotingStart(event.target.value)}
+              disabled={isCreating}
+            />
+            {proposalTiming.timing && proposalTiming.timing.recommendedVotingStartAt !== null && (
+              <button
+                type="button"
+                className="self-start text-sm text-primary-500 underline"
+                onClick={useSuggestedVotingStart}
+                disabled={isCreating}
+              >
+                Use suggested start
+              </button>
+            )}
             {/* The label is kept ABOVE the row rather than passed as `InputNumber`'s `label` prop.
                 ODS renders that prop inside the input's own flex-col wrapper, which makes the
                 wrapper taller than the 48px dropdown beside it; with `items-start` the row then
@@ -240,7 +264,7 @@ export default function Create() {
                 ~29px lower. `htmlFor`/`id` keeps the control properly labelled for screen readers
                 without putting the text inside the wrapper. */}
             <label htmlFor="proposal-duration" className="text-base font-normal leading-tight text-neutral-800">
-              Proposal duration *
+              Voting duration *
             </label>
             <div className="flex items-start gap-x-3">
               <InputNumber
@@ -271,27 +295,33 @@ export default function Create() {
             {proposalTiming.timing && (
               <div className="flex flex-col gap-y-1 text-sm font-normal leading-normal text-neutral-500">
                 <p>
-                  Committee setup can take up to {formatDuration(proposalTiming.timing.committeeSetupWindow)}. Voting
-                  opens when the committee key is ready.
+                  Committee setup can take up to {formatDuration(proposalTiming.timing.committeeSetupWindow)}. The
+                  earliest start from the current time is{" "}
+                  {new Date(proposalTiming.timing.earliestVotingStartAt * 1000).toLocaleString()}.
                 </p>
                 <p>
-                  New ballots close {formatDuration(proposalTiming.timing.availabilityFinalizationWindow)} before the
-                  proposal ends. The reserved time lets Avail finalize committed ballots.
+                  The suggested start includes a ten-minute transaction buffer. If the key arrives early, voting still
+                  waits for the selected time. If the key misses its deadline, the vote does not move later.
                 </p>
-                <p>
-                  This duration guarantees at least {formatDuration(proposalTiming.timing.guaranteedVotingDuration)} to
-                  vote.
-                </p>
-                <p>The contract starts this duration when the proposal transaction is mined.</p>
+                {!proposalTiming.timing.invalidStart && (
+                  <p>
+                    Ballots close {new Date(proposalTiming.timing.votingEndAt * 1000).toLocaleString()}. Avail
+                    finalization runs until {new Date(proposalTiming.timing.availabilityEndsAt * 1000).toLocaleString()}
+                    .
+                  </p>
+                )}
                 {proposalTiming.timing.configurationConflict ? (
                   <p className="text-critical-500">
-                    The live timing settings conflict: the minimum duration is greater than the maximum. Proposal
+                    The live timing settings conflict: the minimum voting duration is greater than the maximum. Proposal
                     submission is disabled.
                   </p>
                 ) : (
                   <p className={proposalTiming.timing.valid ? "text-neutral-500" : "text-critical-500"}>
-                    The selectable range is {formatDuration(proposalTiming.timing.minimumProposalDuration)} to{" "}
-                    {formatDuration(proposalTiming.timing.maximumProposalDuration)}.
+                    {proposalTiming.timing.invalidStart
+                      ? "Choose a valid voting start time."
+                      : proposalTiming.timing.tooEarly
+                        ? "The selected voting start does not leave enough time for committee setup."
+                        : `Voting duration must be ${formatDuration(proposalTiming.timing.minimumVotingWindow)} to ${formatDuration(proposalTiming.timing.maximumVotingWindow)}.`}
                   </p>
                 )}
               </div>

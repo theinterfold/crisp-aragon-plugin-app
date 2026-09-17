@@ -64,6 +64,7 @@ export default function ProposalCard(props: ProposalInputs) {
   const totalVotes = tally.reduce((sum, count) => sum + (count ?? BigInt(0)), BigInt(0));
   const statusClass = (proposalStatus ?? "").toString().toLowerCase();
   const isActive = proposalStatus === ProposalStatus.ACTIVE;
+  const startDate = Number(proposal!.parameters.startDate) * 1000;
   const endDate = Number(proposal!.parameters.endDate) * 1000;
 
   return (
@@ -90,11 +91,13 @@ export default function ProposalCard(props: ProposalInputs) {
         <span className="time">
           {/* Same rule as the proposal header: an end date is only meaningful once there is a
               committee key to encrypt a ballot against. */}
-          {isActive && endDate > Date.now() && !isCommitteeReady
-            ? "Forming committee"
-            : isActive && endDate > Date.now()
-              ? `Proposal ends ${unixTimestampToDate(Math.round(endDate / 1000))}`
-              : capitalize(proposalStatus)}
+          {startDate > Date.now() && !e3Failed
+            ? `Voting starts ${unixTimestampToDate(Math.round(startDate / 1000))}`
+            : isActive && endDate > Date.now() && !isCommitteeReady
+              ? "Forming committee"
+              : isActive && endDate > Date.now()
+                ? `Voting closes ${unixTimestampToDate(Math.round(endDate / 1000))}`
+                : capitalize(proposalStatus)}
         </span>
         {totalVotes > BigInt(0) && (
           <div className="mini-bar" aria-hidden="true">
